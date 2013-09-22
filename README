@@ -1,0 +1,43 @@
+Build kernel and kernel modules for Samsung Galaxy Tab 3 Marvell PXA988
+Ketut P. Kumajaya <ketut.kumajaya at gmail dot com>, Sept 2013
+
+I assumed your home directory is /home/android, kernel source inside /home/android/android_kernel_samsung_lt02
+
+PART I: Build the kernel
+
+1. Create an environtment text file, save it as /home/android/build.env:
+
+export CROSS_COMPILE='/opt/toolchains/arm-eabi-4.6/bin/arm-eabi-'
+export LDFLAGS=''
+export CFLAGS=''
+export SUBARCH=arm
+export ARCH=arm
+
+2. Import environtment file above (dot+space+build.env), create build directory outside kernel source directory,
+and start the building process:
+
+$ cd /home/android/android_kernel_samsung_lt02
+$ . /home/android/build.env
+$ mkdir -p /home/android/build/lt02wifi
+$ make O=/home/android/build/lt02wifi mrproper
+$ make O=/home/android/build/lt02wifi pxa986_lt02wifi_blackhawk_defconfig
+$ make -j8 O=/home/android/build/lt02wifi
+
+3. Copy the resulting kernel and modules to a binary directory:
+
+$ mkdir -p /home/android/build/lt02wifi-bin
+$ mkdir -p /home/android/build/lt02wifi-bin/modules
+$ cp /home/android/build/lt02wifi/arch/arm/boot/zImage /home/android/build/lt02wifi-bin/
+$ find /home/android/build/lt02wifi/ -type f -name *.ko -exec cp {} /home/android/build/lt02wifi-bin/modules/ \;
+
+PART II: Build kernel modules
+
+I assumed your kernel modules source inside /home/android/android_kernel_samsung_lt02_modules
+
+$ cd /home/android/android_kernel_samsung_lt02_modules
+$ make clean_modules KERNELDIR=/data/android/build/lt02wifi KERNEL_OUTDIR=/data/android/build/lt02wifi-bin
+$ make modules KERNELDIR=/data/android/build/lt02wifi KERNEL_OUTDIR=/data/android/build/lt02wifi-bin
+
+Your kernel ready in /data/android/build/lt02wifi-bin and all kernel modules in /data/android/build/lt02wifi-bin/modules
+
+Congratulations!
