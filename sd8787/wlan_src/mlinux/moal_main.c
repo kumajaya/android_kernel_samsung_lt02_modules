@@ -2620,7 +2620,10 @@ void
 woal_mlan_debug_info(moal_private * priv)
 {
 	int i;
-	char str[11 * DBG_CMD_NUM + 1] = { 0 };
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+    int j;
+#endif
+    char str[512] = {0};
 	char *s;
 
 	ENTER();
@@ -2704,6 +2707,17 @@ woal_mlan_debug_info(moal_private * priv)
 	       (unsigned int)info.mp_rd_bitmap, info.curr_rd_port);
 	PRINTM(MERROR, "mp_wr_bitmap=0x%x curr_wr_port=0x%x\n",
 	       (unsigned int)info.mp_wr_bitmap, info.curr_wr_port);
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+    PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index = %d\n",info.last_recv_wr_bitmap,info.last_mp_index);
+    for (i = 0; i < SDIO_MP_DBG_NUM; i ++) {
+        for (s = str, j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++) {
+            s += sprintf(s, "0x%02x ", info.last_mp_wr_info[i * SDIO_MP_AGGR_DEF_PKT_LIMIT + j]);
+        }
+        PRINTM(MERROR, "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n%s\n",
+                info.last_mp_wr_bitmap[i], info.last_mp_wr_ports[i],
+                info.last_mp_wr_len[i], info.last_curr_wr_port[i],str);
+    }
+#endif
 	PRINTM(MERROR, "------------mlan_debug_info End-------------\n");
 	LEAVE();
 }

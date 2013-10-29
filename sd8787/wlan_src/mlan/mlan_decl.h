@@ -232,6 +232,8 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 
 /** define allocated buffer size */
 #define ALLOC_BUF_SIZE           (4 * 1024)
+/** SDIO MP aggr pkt limit */
+#define SDIO_MP_AGGR_DEF_PKT_LIMIT       (8)
 
 /** SDIO IO Port mask */
 #define MLAN_SDIO_IO_PORT_MASK		0xfffff

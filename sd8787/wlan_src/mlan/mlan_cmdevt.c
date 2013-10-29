@@ -134,6 +134,9 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	t_u32 sec = 0, usec = 0;
 #endif
 	t_u8 i;
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+    t_u8 j;
+#endif
 	t_u16 cmd_id, cmd_act;
 	mlan_private *pmpriv = MNULL;
 
@@ -265,6 +268,18 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	       pmadapter->mp_rd_bitmap, pmadapter->curr_rd_port);
 	PRINTM(MERROR, "mp_wr_bitmap=0x%x curr_wr_port=0x%x\n",
 	       pmadapter->mp_wr_bitmap, pmadapter->curr_wr_port);
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+    PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index=%d\n",pmadapter->last_recv_wr_bitmap,pmadapter->last_mp_index);
+    for (i = 0; i < SDIO_MP_DBG_NUM; i ++) {
+        PRINTM(MERROR, "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n",
+                pmadapter->last_mp_wr_bitmap[i],pmadapter->last_mp_wr_ports[i],
+                pmadapter->last_mp_wr_len[i], pmadapter->last_curr_wr_port[i]);
+        for(j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++){
+            PRINTM(MERROR,"0x%02x ", pmadapter->last_mp_wr_info[i * SDIO_MP_AGGR_DEF_PKT_LIMIT + j]);
+        }
+        PRINTM(MERROR,"\n");
+    }
+#endif
 	if (reason != REASON_CODE_CMD_TIMEOUT) {
 		if ((pmadapter->dbg.num_no_cmd_node >= 5)
 		    || (pmadapter->pm_wakeup_card_req &&

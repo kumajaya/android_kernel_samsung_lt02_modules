@@ -601,6 +601,15 @@ wlan_get_info_debug_info(IN pmlan_adapter pmadapter,
 		info->param.debug_info.mp_wr_bitmap = pmadapter->mp_wr_bitmap;
 		info->param.debug_info.curr_rd_port = pmadapter->curr_rd_port;
 		info->param.debug_info.curr_wr_port = pmadapter->curr_wr_port;
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+        info->param.debug_info.last_recv_wr_bitmap      = pmadapter->last_recv_wr_bitmap;
+        info->param.debug_info.last_mp_index       		= pmadapter->last_mp_index;
+        memcpy(pmadapter, info->param.debug_info.last_mp_wr_bitmap, pmadapter->last_mp_wr_bitmap, sizeof(pmadapter->last_mp_wr_bitmap));
+        memcpy(pmadapter, info->param.debug_info.last_mp_wr_ports, pmadapter->last_mp_wr_ports, sizeof(pmadapter->last_mp_wr_ports));
+        memcpy(pmadapter, info->param.debug_info.last_mp_wr_len, pmadapter->last_mp_wr_len, sizeof(pmadapter->last_mp_wr_len));
+        memcpy(pmadapter, info->param.debug_info.last_mp_wr_info, pmadapter->last_mp_wr_info, sizeof(pmadapter->last_mp_wr_info));
+        memcpy(pmadapter, info->param.debug_info.last_curr_wr_port, pmadapter->last_curr_wr_port, sizeof(pmadapter->last_curr_wr_port));
+#endif
 		info->param.debug_info.data_sent = pmadapter->data_sent;
 		info->param.debug_info.cmd_sent = pmadapter->cmd_sent;
 		info->param.debug_info.cmd_resp_received =

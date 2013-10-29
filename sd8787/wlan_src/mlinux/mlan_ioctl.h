@@ -1304,6 +1304,12 @@ typedef struct {
 /** Debug command number */
 #define DBG_CMD_NUM	10
 
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+/** sdio mp debug number */
+#define SDIO_MP_DBG_NUM                  6
+#endif
+
+
 /** mlan_debug_info data structure for MLAN_OID_GET_DEBUG_INFO */
 typedef struct _mlan_debug_info {
 	/* WMM AC_BK count */
@@ -1374,6 +1380,22 @@ typedef struct _mlan_debug_info {
 	t_u32 num_int_read_failure;
     /** Last interrupt status */
 	t_u32 last_int_status;
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+	/** last recv wr_bitmap */
+    t_u32                   last_recv_wr_bitmap;
+    /** last mp_wr_bitmap */
+    t_u32                   last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
+    /** last ports for cmd53 write data */
+    t_u32                   last_mp_wr_ports[SDIO_MP_DBG_NUM];
+	/** last len for cmd53 write data */
+   	t_u32                   last_mp_wr_len[SDIO_MP_DBG_NUM];
+    /** last curr_wr_port */
+    t_u8                    last_curr_wr_port[SDIO_MP_DBG_NUM];
+    /** length info for cmd53 write data */
+    t_u16                   last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
+    /** last mp_index */
+    t_u8                    last_mp_index;
+#endif
     /** Number of deauthentication events */
 	t_u32 num_event_deauth;
     /** Number of disassosiation events */

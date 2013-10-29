@@ -446,8 +446,6 @@ do {                                    \
 #define MAX_MP_REGS			64
 /** Maximum port */
 #define MAX_PORT			16
-/** Multi port aggregation packet limit */
-#define SDIO_MP_AGGR_DEF_PKT_LIMIT       (8)
 
 #ifdef SDIO_MULTI_PORT_TX_AGGR
 /** Multi port TX aggregation buffer size */
@@ -1408,6 +1406,8 @@ typedef struct _sdio_mpa_tx {
 	t_u32 buf_size;
 	/** multiport tx aggregation pkt aggr limit */
 	t_u32 pkt_aggr_limit;
+    /** multiport write info */
+    t_u16  mp_wr_info[SDIO_MP_AGGR_DEF_PKT_LIMIT];
 } sdio_mpa_tx;
 #endif
 
@@ -1547,6 +1547,8 @@ typedef struct _mlan_adapter {
 	t_u8 curr_rd_port;
     /** Current available port for write */
 	t_u8 curr_wr_port;
+    /** last SDIO multiple port group registers */
+    t_u8                    last_mp_regs[MAX_MP_REGS];
     /** Array to store values of SDIO multiple port group registers */
 	t_u8 *mp_regs;
     /** allocated buf to read SDIO multiple port group registers */
@@ -1555,6 +1557,20 @@ typedef struct _mlan_adapter {
 #ifdef SDIO_MULTI_PORT_TX_AGGR
 	/** data structure for SDIO MPA TX */
 	sdio_mpa_tx mpa_tx;
+    /** last wr_bitmap from FW */
+    t_u32                   last_recv_wr_bitmap;
+    /** last mp_wr_bitmap */
+    t_u32                   last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
+    /** last ports for cmd53 write data */
+    t_u32                   last_mp_wr_ports[SDIO_MP_DBG_NUM];
+    /** last length for cmd53 write data */
+    t_u32                   last_mp_wr_len[SDIO_MP_DBG_NUM];
+    /** length info for cmd53 write data */
+    t_u16                   last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
+    /** last curr_wr_port */
+    t_u8                    last_curr_wr_port[SDIO_MP_DBG_NUM];
+    /** last mp_index */
+    t_u8                    last_mp_index;
 #endif				/* SDIO_MULTI_PORT_TX_AGGR */
 
 #ifdef SDIO_MULTI_PORT_RX_AGGR
