@@ -36,7 +36,7 @@ MODULE_DESCRIPTION( DRIVER_DESC );
 MODULE_LICENSE("GPL");
 
 #define CITTY_TTY_MAJOR         0             /* experimental range */
-#define CITTY_TTY_MINORS                13       /* only have 1 device */
+#define CITTY_TTY_MINORS                14       /* only have 1 device */
 
 /*
  *  The following Macro is used for debugging purpose
@@ -79,7 +79,7 @@ static struct semaphore sem[CITTY_TTY_MINORS];
 #define COPY_TO_CITTY 2         /*Rx*/
 #define COPY_TO_USER 3          /*Tx*/
 
-#define CCTDEV_NR_DEVS 13        /* ccdev0 through ccdev10 */
+#define CCTDEV_NR_DEVS 14       /* ccdev0 through ccdev10 */
 #define CCTDEV_QUANTUM 4000
 #define CCTDEV_QSET    1000
 

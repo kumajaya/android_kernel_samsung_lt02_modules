@@ -208,7 +208,7 @@ static int ccinet_rx(struct net_device* netdev, char* packet, int pktlen)
 
 	skb->dev = netdev;
 	skb->protocol = eth_type_trans(skb, netdev); //htons(ETH_P_IP);//eth_type_trans(skb, netdev);
-	skb->ip_summed = CHECKSUM_UNNECESSARY; /* don't check it */
+	skb->ip_summed = CHECKSUM_NONE; /* don't check it */
 	priv->net_stats.rx_packets++;
 	priv->net_stats.rx_bytes += pktlen + sizeof(ether_header);
 	netif_rx(skb);

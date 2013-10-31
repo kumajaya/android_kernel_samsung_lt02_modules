@@ -166,6 +166,9 @@ void shm_rb_data_init(struct shm_rbctl *rbctl)
 	rbctl->skctl_va->cp_wptr = 0;
 	rbctl->skctl_va->cp_port_fc = 0;
 	rbctl->skctl_va->ap_pcm_master = PMIC_MASTER_FLAG;
+	rbctl->skctl_va->diag_ap_db_ver = 0;
+	rbctl->skctl_va->diag_cp_db_ver = 0;
+	rbctl->skctl_va->diag_header_ptr = 0;
 }
 
 static inline void shm_rb_dump(struct shm_rbctl *rbctl)

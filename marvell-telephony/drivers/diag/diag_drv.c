@@ -118,7 +118,7 @@ void diagUsbConnectNotify(void)
 	pHeader = (DIAGHDR *)datamsg;
 	pHeader->packetlen = sizeof(UINT32);
 	pHeader->seqNo = 0;
-	pHeader->reserved = 0;
+	pHeader->msgType = dataId;
 	*(UINT32 *)(datamsg+sizeof(DIAGHDR)) = dataId;
 	while (retrycunt > 0)
 	{
@@ -147,7 +147,7 @@ void diagUsbDisConnectNotify(void)
 	pHeader = (DIAGHDR *)datamsg;
 	pHeader->packetlen = sizeof(UINT32);
 	pHeader->seqNo = 0;
-	pHeader->reserved = 0;
+	pHeader->msgType = dataId;
 	*(UINT32 *)(datamsg+sizeof(DIAGHDR)) = dataId;
 	diagHostUsbConn = FALSE;
 	diagConnAcked = FALSE;

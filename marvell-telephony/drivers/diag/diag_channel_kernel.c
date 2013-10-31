@@ -86,7 +86,7 @@ void diagSendUsbData(unsigned char*msg, int msglen)
 	pHeader = (DIAGHDR*)skb_push(skb,sizeof(*pHeader));
 	pHeader->packetlen = msglen;
 	pHeader->seqNo = 0;
-	pHeader->reserved = 0;
+	pHeader->msgType = 0;
 	diagTxRawSkb(skb, msglen + sizeof(DIAGHDR));
 }
 void diagTxRawData(unsigned char *msg, int msglen)
@@ -287,7 +287,7 @@ int diagInitTask(void *data)
 	pHeader = (DIAGHDR *)startmsg;
 	pHeader->packetlen = sizeof(UINT32);
 	pHeader->seqNo = 0;
-	pHeader->reserved = 0;
+	pHeader->msgType = startId;
 	*(UINT32 *)(startmsg+sizeof(DIAGHDR)) = startId;
 	DBGMSG("diagInitTask start...\n");
 	while (!kthread_should_stop())

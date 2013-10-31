@@ -31,6 +31,7 @@
 #endif
 #include <linux/module.h>
 #include <linux/cdev.h>
+#include <linux/suspend.h>
 #include "acipcd.h"
 #include "shm.h"
 #include "portqueue.h"
@@ -51,6 +52,17 @@ struct cmsockdev_dev {
 struct cmsockdev_dev *cmsockdev_devices;
 static struct class *cmsockdev_class;
 
+typedef enum
+{
+	Sensor_ON_CS,
+	Sensor_ON_PS,
+	Sensor_ON_CS_PS,
+	Sensor_OFF
+} SensorStatus;
+
+static int gSensorStatus = Sensor_OFF;
+static int gCpPowerMode = 0;
+
 /* forward msocket sync related static function prototype */
 static void msocket_sync_worker(struct work_struct *work);
 static void msocket_connect(void);
@@ -66,6 +78,8 @@ DECLARE_COMPLETION(msocket_peer_sync);
 extern int NVM_wake_lock_num;
 extern int NVM_wake_unlock_num;
 extern int rx_workq_sch_num;
+static struct wakeup_source cp_power_resume_wakeup;
+
 /* open a msocket in kernel */
 int msocket(int port)
 {
@@ -811,6 +825,18 @@ static int msocket_ioctl(struct inode *inode, struct file *filp,
 		msocket_connect();
 		return 0;
 
+	case MSOCKET_IOC_SENSOR_STATUS_NOTIFY:
+		gSensorStatus = arg;
+		printk("MSOCK: sensor status is %d\n", gSensorStatus);
+		return 0;
+
+	case MSOCKET_IOC_CP_POWER_MODE_NOTIFY:
+		gCpPowerMode = arg;
+		printk("MSOCK: cp power mode is %d\n", gCpPowerMode);
+		if(!gCpPowerMode)
+			__pm_relax(&cp_power_resume_wakeup);
+		return 0;
+
 	default:
 		return -ENOTTY;
 	}
@@ -1012,6 +1038,31 @@ int cmsockdev_init_module(void)
 	return result;
 }
 
+static int px_suspend_notifier_event(struct notifier_block *this,
+		unsigned long event, void *ptr)
+{
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		printk("MSOCK: gCpPowerMode:%d,gSensorStatus:%d\n", gCpPowerMode, gSensorStatus);
+		/*
+		if (gCpPowerMode == 1 && (gSensorStatus != Sensor_ON_CS && gSensorStatus != Sensor_ON_CS_PS)) {
+			__pm_wakeup_event(&cp_power_resume_wakeup, 1000 * 5);
+			portq_send_msg(CISTUB_PORT, MsocketSuspendNotify);
+		}
+		*/
+		break;
+	case PM_POST_SUSPEND:
+		break;
+	default:
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block suspend_notifier = {
+	.notifier_call = px_suspend_notifier_event,
+};
+
 /* module initialization */
 static int __init msocket_init(void)
 {
@@ -1061,11 +1112,17 @@ static int __init msocket_init(void)
 	if ((rc = cmsockdev_init_module()) < 0) {
 		goto cmsock_err;
 	}
+	wakeup_source_init(&cp_power_resume_wakeup, "cp_power_resume_wakeup");
+	if ((rc = register_pm_notifier(&suspend_notifier))) {
+		goto suspendReg_err;
+	}
 	/* start msocket peer sync */
 	msocket_connect();
 
 	return 0;
 
+suspendReg_err:
+	cmsockdev_cleanup_module(cmsockdev_nr_devs);
 cmsock_err:
 	misc_deregister(&msocketDump_dev);
 msocketDump_err:

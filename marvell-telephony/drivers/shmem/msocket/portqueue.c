@@ -586,7 +586,7 @@ void portq_broadcase_msg(int proc)
 			msg = (DiagMsgHeader *) skb_put(skb, size);
 			msg->diagHeader.packetlen = sizeof(msg->procId);
 			msg->diagHeader.seqNo = 0;
-			msg->diagHeader.reserved = 0;
+			msg->diagHeader.msgType = proc;
 			msg->procId = proc;
 		} else {
 			ShmApiMsg *msg;
@@ -620,6 +620,69 @@ void portq_broadcase_msg(int proc)
 
 		spin_unlock(&portq->lock);
 	}
+
+	spin_unlock_irqrestore(&portq_list_lock, flags);
+}
+
+/* send messages to a specified port */
+void portq_send_msg(int port, int proc)
+{
+	struct portq *portq;
+	struct shm_skhdr *hdr;
+	int size;
+	unsigned long flags;
+	ShmApiMsg *msg;
+	struct sk_buff *skb;
+
+	spin_lock_irqsave(&portq_list_lock, flags);
+
+	if (!(portq = portq_array[port]))
+		return;
+
+	/*
+	* allocate sk_buff first, the size = 32 is enough
+	* to hold all kind of broadcasting messages
+	*/
+	skb = alloc_skb(32, GFP_ATOMIC);
+	if (!skb) {
+		/* don't known how to do better, just return */
+		printk(KERN_ERR "MSOCK: %s: out of memory.\n",
+			      __func__);
+		spin_unlock_irqrestore(&portq_list_lock, flags);
+		return;
+	}
+
+	/* reserve port header space */
+	skb_reserve(skb, sizeof(*hdr));
+
+	size = sizeof(*msg);
+	msg = (ShmApiMsg *) skb_put(skb, size);
+	msg->svcId = portq->port;	/* svcId == port */
+	msg->procId = proc;
+	msg->msglen = 0;
+
+	/* reuse the port header */
+	hdr = (struct shm_skhdr *)skb_push(skb, sizeof(*hdr));
+
+	/* fill in shm header */
+	hdr->address = 0;
+	hdr->port = portq->port;
+	hdr->checksum = 0;
+	hdr->length = size;
+
+	spin_lock(&portq->lock);
+
+	/* add to port rx queue */
+	skb_queue_tail(&portq->rx_q, skb);
+	portq->stat_rx_indicate++;
+
+	/* notify upper layer that packet available */
+	if (portq->status & PORTQ_STATUS_RECV_EMPTY) {
+		portq->status &= ~PORTQ_STATUS_RECV_EMPTY;
+		wake_up_interruptible(&portq->rx_wq);
+	}
+
+	spin_unlock(&portq->lock);
 
 	spin_unlock_irqrestore(&portq_list_lock, flags);
 }

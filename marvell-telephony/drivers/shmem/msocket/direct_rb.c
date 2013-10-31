@@ -138,7 +138,7 @@ void direct_rb_packet_send_cb(struct shm_rbctl *rbctl)
 	}
 	dir_ctl->is_ap_recv_empty = false;
 	spin_unlock(&dir_ctl->rb_rx_lock);
-        wake_lock_timeout(&acipc_wakeup, HZ * 2);
+	wake_lock_timeout(&acipc_wakeup, HZ * 2);
 	wake_up_interruptible(&(dir_ctl->rb_rx_wq));
 }
 
@@ -207,6 +207,7 @@ int direct_rb_init(void)
 		init_waitqueue_head(&(dir_ctl->rb_rx_wq));
 		spin_lock_init(&dir_ctl->rb_rx_lock);
 		dir_ctl->refcount = 0;
+		dir_ctl->is_ap_recv_empty = true;
 	}
 	if ((rc = misc_register(&msocketDirectDump_dev)) < 0) {
 		dir_ctl = direct_rbctl;
@@ -346,7 +347,7 @@ static ssize_t direct_rb_recv_broadcast_msg(enum direct_rb_type direct_type,
 		DiagMsgHeader *pDiagMsgHeader = (DiagMsgHeader *)msg;
 		pDiagMsgHeader->diagHeader.packetlen = sizeof(pDiagMsgHeader->procId);
 		pDiagMsgHeader->diagHeader.seqNo = 0;
-		pDiagMsgHeader->diagHeader.reserved = 0;
+		pDiagMsgHeader->diagHeader.msgType = proc;
 		pDiagMsgHeader->procId = proc;
 	}
 	else
@@ -370,7 +371,7 @@ static ssize_t direct_rb_recv_broadcast_msg(enum direct_rb_type direct_type,
 exit:
 	if(rc < 0)
 	{
-		/*restore broadcast message state since fail to push these message to user space*/
+		/*restore broadcast message state after failing to push these message to user space*/
 		spin_lock_irqsave(&dir_ctl->rb_rx_lock, flags);
 		if(proc == MsocketLinkdownProcId)
 		{
@@ -401,21 +402,36 @@ ssize_t direct_rb_recv(enum direct_rb_type direct_type,
 	struct direct_rb_skhdr *hdr;
 	int rc = -EFAULT;
 	unsigned long flags;
+	ssize_t packet_len;
 
 	int slot;
 
-	while (shm_is_recv_empty(rbctl) && direct_rb_broadcast_msg_recv_empty(dir_ctl)) {
-		spin_lock_irqsave(&dir_ctl->rb_rx_lock, flags);
-		dir_ctl->is_ap_recv_empty = true;
-		spin_unlock_irqrestore(&dir_ctl->rb_rx_lock, flags);
+	while (1)
+	{
 		if (wait_event_interruptible(dir_ctl->rb_rx_wq, !(dir_ctl->is_ap_recv_empty
-			&& direct_rb_broadcast_msg_recv_empty(dir_ctl)))) {
-                        /* signal: tell the fs layer to handle it */
-                        return -EINTR;
-                }
+			&& direct_rb_broadcast_msg_recv_empty(dir_ctl))))
+		{
+			/* signal: tell the fs layer to handle it */
+			return -EINTR;
+		}
+
+		if(!direct_rb_broadcast_msg_recv_empty(dir_ctl))
+			break;
+
+		spin_lock_irqsave(&dir_ctl->rb_rx_lock, flags);
+		if(shm_is_recv_empty(rbctl))
+		{
+			dir_ctl->is_ap_recv_empty = true;
+			spin_unlock_irqrestore(&dir_ctl->rb_rx_lock, flags);
+		}
+		else
+		{
+			spin_unlock_irqrestore(&dir_ctl->rb_rx_lock, flags);
+			break;
+		}
 	}
 
-	/*rc =0 means not have received a broadcast messgae so go to receive a message from ring buffer.
+	/*rc =0 means not have received a broadcast message so go to receive a message from ring buffer.
 	For other case means have received a broadcast, no matter push to user space successfully or not,
 	return directly here.*/
 	if((rc = direct_rb_recv_broadcast_msg(direct_type, buf, len)) != 0)
@@ -443,11 +459,13 @@ ssize_t direct_rb_recv(enum direct_rb_type direct_type,
 		printk(KERN_ERR "direct_rb: %s: copy_to_user failed.\n", __func__);
 		return rc;
 	}
+	/* save packet length before advancing reader pointer */
+	packet_len = hdr->length;
 
 	/* advance reader pointer */
 	skctl->ap_rptr = slot;
 
-	return hdr->length;
+	return packet_len;
 
 }
 EXPORT_SYMBOL(direct_rb_recv);

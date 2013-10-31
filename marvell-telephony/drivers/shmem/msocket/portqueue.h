@@ -98,4 +98,5 @@ extern void portq_flush_workqueue(void);
 extern void portq_set_dumpflag(int flag);
 extern int portq_get_dumpflag(void);
 extern unsigned int portq_poll(struct portq *portq, struct file *filp, poll_table *wait);
+extern void portq_send_msg(int port, int proc);
 #endif /* PORTQUEUE_H_ */

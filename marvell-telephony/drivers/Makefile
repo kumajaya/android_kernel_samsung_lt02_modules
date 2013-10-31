@@ -45,8 +45,9 @@ install-target: compile
 	$(hide)$(SUDO) cp -f cp_load/cploaddev.ko $(KERNEL_OUTDIR)/modules
 	$(hide)$(SUDO) cp -f errorhandler/build/seh.ko $(KERNEL_OUTDIR)/modules
 	$(hide)$(SUDO) cp -f hwmap/hwmap.ko $(KERNEL_OUTDIR)/modules
+	$(hide)$(SUDO) cp -f usim_event/usimeventk.ko $(KERNEL_OUTDIR)/modules
 
-compile: cp_load_drv msocketk cci_datastub_drv citty_drv cidatatty_drv ccinetdev_drv gs_modem_drv diag_drv seh_drv hwmap_drv
+compile: cp_load_drv msocketk cci_datastub_drv citty_drv cidatatty_drv ccinetdev_drv gs_modem_drv diag_drv seh_drv hwmap_drv usim_event_drv
 
 msocketk: cp_load_drv
 	make -C shmem/msocket
@@ -78,6 +79,9 @@ seh_drv: cp_load_drv
 cp_load_drv:
 	make -C cp_load
 
+usim_event_drv:
+	make -C usim_event
+
 clean:
 	$(hide)rm -f $(KERNEL_OUTDIR)/modules/citty.ko
 	$(hide)rm -f $(KERNEL_OUTDIR)/modules/ccinetdev.ko
@@ -100,6 +104,7 @@ clean:
 	make -C cidatatty clean
 	make -C citty clean
 	make -C cp_load clean
+	make -C usim_event clean
 	-find -name '*.cmd' -exec rm {} \;
 	-find -name '*.o' -exec rm {} \;
 	-find -name '*.order' -exec rm {} \;

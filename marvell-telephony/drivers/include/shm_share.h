@@ -29,6 +29,7 @@
 
 #define MsocketLinkdownProcId   0xFFFE          //For linkdown indication
 #define MsocketLinkupProcId             0xFFFD  //For linkup indication
+#define MsocketSuspendNotify	0xFFFC			//For system will enter in suspend indication
 
 #define BroadCastSequence	{0,NVMSRV_PORT, DIAG_PORT,CISTUB_PORT,CIDATASTUB_PORT, CICSDSTUB_PORT, TEST_PORT, AUDIOSTUB_PORT} //The linkup messages will be sent to the ports by this order.
 typedef struct _ShmApiMsg

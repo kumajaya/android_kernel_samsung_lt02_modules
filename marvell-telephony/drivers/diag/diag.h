@@ -51,7 +51,7 @@ typedef struct _diagheader
 {
 	UINT16 seqNo;
 	UINT16 packetlen;
-	UINT32 reserved;
+	UINT32 msgType;
 }DIAGHDR;       //don't change the definition. variable definition order sensitive.
 
 typedef struct _diagmsgheader
