@@ -1309,7 +1309,6 @@ typedef struct {
 #define SDIO_MP_DBG_NUM                  6
 #endif
 
-
 /** mlan_debug_info data structure for MLAN_OID_GET_DEBUG_INFO */
 typedef struct _mlan_debug_info {
 	/* WMM AC_BK count */
@@ -1381,20 +1380,30 @@ typedef struct _mlan_debug_info {
     /** Last interrupt status */
 	t_u32 last_int_status;
 #ifdef SDIO_MULTI_PORT_TX_AGGR
+    /** Number of packets tx aggr */
+	t_u32 mpa_tx_count[SDIO_MP_AGGR_DEF_PKT_LIMIT];
+    /** no more packets count*/
+	t_u32 mpa_sent_last_pkt;
+    /** no write_ports count */
+	t_u32 mpa_sent_no_ports;
 	/** last recv wr_bitmap */
-    t_u32                   last_recv_wr_bitmap;
+	t_u32 last_recv_wr_bitmap;
     /** last mp_wr_bitmap */
-    t_u32                   last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
     /** last ports for cmd53 write data */
-    t_u32                   last_mp_wr_ports[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_ports[SDIO_MP_DBG_NUM];
 	/** last len for cmd53 write data */
-   	t_u32                   last_mp_wr_len[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_len[SDIO_MP_DBG_NUM];
     /** last curr_wr_port */
-    t_u8                    last_curr_wr_port[SDIO_MP_DBG_NUM];
+	t_u8 last_curr_wr_port[SDIO_MP_DBG_NUM];
     /** length info for cmd53 write data */
-    t_u16                   last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
+	t_u16 last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
     /** last mp_index */
-    t_u8                    last_mp_index;
+	t_u8 last_mp_index;
+#endif
+#ifdef SDIO_MULTI_PORT_RX_AGGR
+    /** Number of packets rx aggr */
+	t_u32 mpa_rx_count[SDIO_MP_AGGR_DEF_PKT_LIMIT];
 #endif
     /** Number of deauthentication events */
 	t_u32 num_event_deauth;
@@ -1464,6 +1473,16 @@ typedef struct _mlan_debug_info {
 	t_u32 mlan_processing;
     /** mlan_rx_processing */
 	t_u32 mlan_rx_processing;
+    /** mlan_adapter pointer */
+	t_void *mlan_adapter;
+    /** mlan_adapter_size */
+	t_u32 mlan_adapter_size;
+    /** mlan_priv vector */
+	t_void *mlan_priv[MLAN_MAX_BSS_NUM];
+    /** mlan_priv_size */
+	t_u32 mlan_priv_size[MLAN_MAX_BSS_NUM];
+    /** mlan_priv_num */
+	t_u8 mlan_priv_num;
 } mlan_debug_info, *pmlan_debug_info;
 
 #ifdef UAP_SUPPORT
@@ -1507,7 +1526,7 @@ typedef struct _mlan_ds_get_info {
 	/** BSS information for MLAN_OID_GET_BSS_INFO */
 		mlan_bss_info bss_info;
 	/** Debug information for MLAN_OID_GET_DEBUG_INFO */
-		mlan_debug_info debug_info;
+		t_u8 debug_info[1];
 #ifdef UAP_SUPPORT
 	/** UAP Statistics information for MLAN_OID_GET_STATS */
 		mlan_ds_uap_stats ustats;
@@ -2407,6 +2426,9 @@ typedef struct _mlan_ds_11n_cfg {
 
 /** Country code length */
 #define COUNTRY_CODE_LEN                        3
+
+/** Maximum size of IEEE Information Elements */
+#define IEEE_MAX_IE_SIZE      256
 
 /*-----------------------------------------------------------------*/
 /** 802.11d Configuration Group */

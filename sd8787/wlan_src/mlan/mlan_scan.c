@@ -929,6 +929,7 @@ wlan_scan_setup_scan_config(IN mlan_private * pmpriv,
 	MrvlIEtypes_NumProbes_t *pnum_probes_tlv;
 	MrvlIEtypes_WildCardSsIdParamSet_t *pwildcard_ssid_tlv;
 	MrvlIEtypes_RatesParamSet_t *prates_tlv;
+	MrvlIEtypes_Bssid_List_t *pbssid_tlv;
 
 	const t_u8 zero_mac[MLAN_MAC_ADDR_LENGTH] = { 0, 0, 0, 0, 0, 0 };
 	t_u8 *ptlv_pos;
@@ -993,6 +994,18 @@ wlan_scan_setup_scan_config(IN mlan_private * pmpriv,
 		memcpy(pmadapter, pscan_cfg_out->specific_bssid,
 		       puser_scan_in->specific_bssid,
 		       sizeof(pscan_cfg_out->specific_bssid));
+
+		if (pmadapter->ext_scan
+		    && memcmp(pmadapter, pscan_cfg_out->specific_bssid,
+			      &zero_mac, sizeof(zero_mac))) {
+			pbssid_tlv = (MrvlIEtypes_Bssid_List_t *) ptlv_pos;
+			pbssid_tlv->header.type = TLV_TYPE_BSSID;
+			pbssid_tlv->header.len = MLAN_MAC_ADDR_LENGTH;
+			memcpy(pmadapter, pbssid_tlv->bssid,
+			       puser_scan_in->specific_bssid,
+			       MLAN_MAC_ADDR_LENGTH);
+			ptlv_pos += sizeof(MrvlIEtypes_Bssid_List_t);
+		}
 
 		for (ssid_idx = 0;
 		     ((ssid_idx < NELEMENTS(puser_scan_in->ssid_list))

@@ -82,6 +82,7 @@ woal_associate_ssid_bssid(moal_private * priv, struct iwreq *wrq)
 
 	ENTER();
 
+	memset(&ssid_bssid, 0, sizeof(ssid_bssid));
 	mac_idx = 0;
 	buflen = MIN(wrq->u.data.length, (sizeof(buf) - 1));
 	memset(buf, 0, sizeof(buf));
@@ -4608,7 +4609,7 @@ woal_do_sdio_mpa_ctrl(moal_private * priv, struct iwreq *wrq)
 			ret = -EFAULT;
 			goto done;
 		}
-		wrq->u.data.length = sizeof(data) / sizeof(int);
+		wrq->u.data.length = ARRAY_SIZE(data);
 		goto done;
 	}
 
@@ -4744,7 +4745,7 @@ woal_set_get_scan_cfg(moal_private * priv, struct iwreq *wrq)
 			ret = -EFAULT;
 			goto done;
 		}
-		wrq->u.data.length = sizeof(data) / sizeof(int);
+		wrq->u.data.length = ARRAY_SIZE(data);
 	}
 done:
 	if (req)

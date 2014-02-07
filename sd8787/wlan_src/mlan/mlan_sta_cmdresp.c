@@ -36,16 +36,17 @@ Change log:
 #include "mlan_meas.h"
 
 /********************************************************
-                Local Variables
+			Local Variables
 ********************************************************/
 
 /********************************************************
-                Global Variables
+			Global Variables
 ********************************************************/
 
 /********************************************************
-                Local Functions
+			Local Functions
 ********************************************************/
+
 /**
  *  @brief This function handles the command response error
  *
@@ -1472,7 +1473,7 @@ wlan_ret_otp_user_data(IN pmlan_private pmpriv,
 }
 
 /********************************************************
-                Global Functions
+			Global Functions
 ********************************************************/
 
 /**
@@ -1737,7 +1738,6 @@ wlan_ops_sta_process_cmdresp(IN t_void * priv,
 	case HostCmd_CMD_REJECT_ADDBA_REQ:
 		ret = wlan_ret_reject_addba_req(pmpriv, resp, pioctl_buf);
 		break;
-
 	default:
 		PRINTM(MERROR, "CMD_RESP: Unknown command response %#x\n",
 		       resp->command);

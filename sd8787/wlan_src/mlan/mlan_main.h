@@ -560,6 +560,9 @@ typedef enum _PS_STATE {
 
 /** Minimum flush timer for win size of 1 is 50 ms */
 #define MIN_FLUSH_TIMER_MS 50
+/** Minimum flush timer for win size of 1 is 15 ms */
+#define MIN_FLUSH_TIMER_15_MS 15
+
 /** Tx BA stream table */
 typedef struct _TxBAStreamTbl TxBAStreamTbl;
 
@@ -1407,7 +1410,7 @@ typedef struct _sdio_mpa_tx {
 	/** multiport tx aggregation pkt aggr limit */
 	t_u32 pkt_aggr_limit;
     /** multiport write info */
-    t_u16  mp_wr_info[SDIO_MP_AGGR_DEF_PKT_LIMIT];
+	t_u16 mp_wr_info[SDIO_MP_AGGR_DEF_PKT_LIMIT];
 } sdio_mpa_tx;
 #endif
 
@@ -1500,6 +1503,8 @@ typedef struct _mlan_adapter {
 	t_u32 mlan_rx_processing;
     /** rx_proc_lock for main_rx_process */
 	t_void *prx_proc_lock;
+    /** rx work enable flag */
+	t_u8 rx_work_flag;
 	/* number of rx pkts queued */
 	mlan_scalar rx_pkts_queued;
     /** more task flag */
@@ -1548,7 +1553,7 @@ typedef struct _mlan_adapter {
     /** Current available port for write */
 	t_u8 curr_wr_port;
     /** last SDIO multiple port group registers */
-    t_u8                    last_mp_regs[MAX_MP_REGS];
+	t_u8 last_mp_regs[MAX_MP_REGS];
     /** Array to store values of SDIO multiple port group registers */
 	t_u8 *mp_regs;
     /** allocated buf to read SDIO multiple port group registers */
@@ -1557,25 +1562,33 @@ typedef struct _mlan_adapter {
 #ifdef SDIO_MULTI_PORT_TX_AGGR
 	/** data structure for SDIO MPA TX */
 	sdio_mpa_tx mpa_tx;
+    /** packet number for tx aggr */
+	t_u32 mpa_tx_count[SDIO_MP_AGGR_DEF_PKT_LIMIT];
+    /** no more packets count*/
+	t_u32 mpa_sent_last_pkt;
+    /** no write_ports count */
+	t_u32 mpa_sent_no_ports;
     /** last wr_bitmap from FW */
-    t_u32                   last_recv_wr_bitmap;
+	t_u32 last_recv_wr_bitmap;
     /** last mp_wr_bitmap */
-    t_u32                   last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_bitmap[SDIO_MP_DBG_NUM];
     /** last ports for cmd53 write data */
-    t_u32                   last_mp_wr_ports[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_ports[SDIO_MP_DBG_NUM];
     /** last length for cmd53 write data */
-    t_u32                   last_mp_wr_len[SDIO_MP_DBG_NUM];
+	t_u32 last_mp_wr_len[SDIO_MP_DBG_NUM];
     /** length info for cmd53 write data */
-    t_u16                   last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
+	t_u16 last_mp_wr_info[SDIO_MP_DBG_NUM * SDIO_MP_AGGR_DEF_PKT_LIMIT];
     /** last curr_wr_port */
-    t_u8                    last_curr_wr_port[SDIO_MP_DBG_NUM];
+	t_u8 last_curr_wr_port[SDIO_MP_DBG_NUM];
     /** last mp_index */
-    t_u8                    last_mp_index;
+	t_u8 last_mp_index;
 #endif				/* SDIO_MULTI_PORT_TX_AGGR */
 
 #ifdef SDIO_MULTI_PORT_RX_AGGR
 	/** data structure for SDIO MPA RX */
 	sdio_mpa_rx mpa_rx;
+    /** packet number for tx aggr */
+	t_u32 mpa_rx_count[SDIO_MP_AGGR_DEF_PKT_LIMIT];
 #endif				/* SDIO_MULTI_PORT_RX_AGGR */
 
     /** SDIO interrupt mode (0: INT_MODE_SDIO, 1: INT_MODE_GPIO) */

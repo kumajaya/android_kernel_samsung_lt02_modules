@@ -131,7 +131,14 @@ static void
 mlan_11n_rxreorder_timer_restart(pmlan_adapter pmadapter,
 				 RxReorderTbl * rx_reor_tbl_ptr)
 {
+	t_u16 min_flush_time = 0;
 	ENTER();
+
+	if (rx_reor_tbl_ptr->win_size >= 32)
+		min_flush_time = MIN_FLUSH_TIMER_15_MS;
+	else
+		min_flush_time = MIN_FLUSH_TIMER_MS;
+
 	if (rx_reor_tbl_ptr->timer_context.timer_is_set)
 		pmadapter->callbacks.moal_stop_timer(pmadapter->pmoal_handle,
 						     rx_reor_tbl_ptr->
@@ -141,7 +148,7 @@ mlan_11n_rxreorder_timer_restart(pmlan_adapter pmadapter,
 					      rx_reor_tbl_ptr->timer_context.
 					      timer, MFALSE,
 					      (rx_reor_tbl_ptr->win_size *
-					       MIN_FLUSH_TIMER_MS));
+					       min_flush_time));
 
 	rx_reor_tbl_ptr->timer_context.timer_is_set = MTRUE;
 	LEAVE();
@@ -979,8 +986,8 @@ mlan_11n_delete_bastream_tbl(mlan_private * priv, int tid,
 	else
 		cleanup_rx_reorder_tbl = (initiator) ? MFALSE : MTRUE;
 
-	PRINTM(MEVENT, "DELBA: " MACSTR " tid=%d,"
-	       "initiator=%d\n", MAC2STR(peer_mac), tid, initiator);
+	PRINTM(MEVENT, "delete_bastream_tbl: " MACSTR " tid=%d, type=%d"
+	       "initiator=%d\n", MAC2STR(peer_mac), tid, initiator, type);
 
 	if (cleanup_rx_reorder_tbl) {
 		rx_reor_tbl_ptr =

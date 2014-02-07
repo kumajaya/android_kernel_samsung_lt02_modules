@@ -27,7 +27,7 @@ Change log:
 #define _MLAN_DECL_H_
 
 /** MLAN release version */
-#define MLAN_RELEASE_VERSION		"421"
+#define MLAN_RELEASE_VERSION		"436"
 
 /** Re-define generic data types for MLAN/MOAL */
 /** Signed char (1-byte) */
@@ -260,6 +260,8 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 
 /** Buffer flag for bridge packet */
 #define MLAN_BUF_FLAG_BRIDGE_BUF        MBIT(3)
+
+#define MLAN_BUF_FLAG_TCP_ACK		MBIT(9)
 
 #ifdef DEBUG_LEVEL1
 /** Debug level bit definition */
@@ -797,6 +799,10 @@ typedef struct _mlan_callbacks {
 				      IN t_u32 bss_index, IN t_u32 level);
     /** moal_assert */
 	 t_void(*moal_assert) (IN t_void * pmoal_handle, IN t_u32 cond);
+
+    /** moal_tcp_ack_tx_ind */
+	 t_void(*moal_tcp_ack_tx_ind) (IN t_void * pmoal_handle,
+				       IN pmlan_buffer pmbuf);
 } mlan_callbacks, *pmlan_callbacks;
 
 /** Interrupt Mode SDIO */
@@ -851,6 +857,9 @@ typedef struct _mlan_device {
 #endif
     /** FW download CRC check flag */
 	t_u32 fw_crc_check;
+    /** enable/disable rx work */
+	t_u8 rx_work;
+
 } mlan_device, *pmlan_device;
 
 /** MLAN API function prototype */

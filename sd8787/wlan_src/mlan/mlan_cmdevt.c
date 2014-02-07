@@ -135,7 +135,7 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 #endif
 	t_u8 i;
 #ifdef SDIO_MULTI_PORT_TX_AGGR
-    t_u8 j;
+	t_u8 j;
 #endif
 	t_u16 cmd_id, cmd_act;
 	mlan_private *pmpriv = MNULL;
@@ -147,7 +147,6 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	case REASON_CODE_NO_CMD_NODE:
 		pmadapter->dbg.num_no_cmd_node++;
 		PRINTM(MERROR, "No Free command node\n");
-		wlan_dump_pending_commands(pmadapter);
 		break;
 	case REASON_CODE_CMD_TIMEOUT:
 		PRINTM(MERROR, "Commmand Timeout\n");
@@ -155,6 +154,7 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	default:
 		break;
 	}
+	wlan_dump_pending_commands(pmadapter);
 	if (reason != REASON_CODE_CMD_TIMEOUT) {
 		if (!pmadapter->curr_cmd) {
 			PRINTM(MERROR, "CurCmd Empty\n");
@@ -269,16 +269,23 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	PRINTM(MERROR, "mp_wr_bitmap=0x%x curr_wr_port=0x%x\n",
 	       pmadapter->mp_wr_bitmap, pmadapter->curr_wr_port);
 #ifdef SDIO_MULTI_PORT_TX_AGGR
-    PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index=%d\n",pmadapter->last_recv_wr_bitmap,pmadapter->last_mp_index);
-    for (i = 0; i < SDIO_MP_DBG_NUM; i ++) {
-        PRINTM(MERROR, "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n",
-                pmadapter->last_mp_wr_bitmap[i],pmadapter->last_mp_wr_ports[i],
-                pmadapter->last_mp_wr_len[i], pmadapter->last_curr_wr_port[i]);
-        for(j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++){
-            PRINTM(MERROR,"0x%02x ", pmadapter->last_mp_wr_info[i * SDIO_MP_AGGR_DEF_PKT_LIMIT + j]);
-        }
-        PRINTM(MERROR,"\n");
-    }
+	PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index=%d\n",
+	       pmadapter->last_recv_wr_bitmap, pmadapter->last_mp_index);
+	for (i = 0; i < SDIO_MP_DBG_NUM; i++) {
+		PRINTM(MERROR,
+		       "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n",
+		       pmadapter->last_mp_wr_bitmap[i],
+		       pmadapter->last_mp_wr_ports[i],
+		       pmadapter->last_mp_wr_len[i],
+		       pmadapter->last_curr_wr_port[i]);
+		for (j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++) {
+			PRINTM(MERROR, "0x%02x ",
+			       pmadapter->last_mp_wr_info[i *
+							  SDIO_MP_AGGR_DEF_PKT_LIMIT
+							  + j]);
+		}
+		PRINTM(MERROR, "\n");
+	}
 #endif
 	if (reason != REASON_CODE_CMD_TIMEOUT) {
 		if ((pmadapter->dbg.num_no_cmd_node >= 5)
@@ -1746,6 +1753,18 @@ wlan_cmd_timeout_func(t_void * function_context)
 
 	if (pmadapter->hw_status == WlanHardwareStatusInitializing)
 		wlan_init_fw_complete(pmadapter);
+	else {
+		/* Signal MOAL to perform extra handling for debugging */
+		if (pmpriv) {
+			wlan_recv_event(pmpriv, MLAN_EVENT_ID_DRV_DBG_DUMP,
+					MNULL);
+		} else {
+			wlan_recv_event(wlan_get_priv
+					(pmadapter, MLAN_BSS_ROLE_ANY),
+					MLAN_EVENT_ID_DRV_DBG_DUMP, MNULL);
+		}
+	}
+
 exit:
 	LEAVE();
 	return;
@@ -2825,9 +2844,7 @@ wlan_cmd_tx_rate_cfg(IN pmlan_private pmpriv,
 			wlan_cpu_to_le16(pbitmap_rates[0]);
 		rate_scope->ofdm_rate_bitmap =
 			wlan_cpu_to_le16(pbitmap_rates[1]);
-		for (i = 0;
-		     i < sizeof(rate_scope->ht_mcs_rate_bitmap) / sizeof(t_u16);
-		     i++)
+		for (i = 0; i < NELEMENTS(rate_scope->ht_mcs_rate_bitmap); i++)
 			rate_scope->ht_mcs_rate_bitmap[i] =
 				wlan_cpu_to_le16(pbitmap_rates[2 + i]);
 	} else {
@@ -2835,9 +2852,7 @@ wlan_cmd_tx_rate_cfg(IN pmlan_private pmpriv,
 			wlan_cpu_to_le16(pmpriv->bitmap_rates[0]);
 		rate_scope->ofdm_rate_bitmap =
 			wlan_cpu_to_le16(pmpriv->bitmap_rates[1]);
-		for (i = 0;
-		     i < sizeof(rate_scope->ht_mcs_rate_bitmap) / sizeof(t_u16);
-		     i++)
+		for (i = 0; i < NELEMENTS(rate_scope->ht_mcs_rate_bitmap); i++)
 			rate_scope->ht_mcs_rate_bitmap[i] =
 				wlan_cpu_to_le16(pmpriv->bitmap_rates[2 + i]);
 	}
@@ -2909,9 +2924,8 @@ wlan_ret_tx_rate_cfg(IN pmlan_private pmpriv,
 			pmpriv->bitmap_rates[1] =
 				wlan_le16_to_cpu(prate_scope->ofdm_rate_bitmap);
 			for (i = 0;
-			     i <
-			     sizeof(prate_scope->ht_mcs_rate_bitmap) /
-			     sizeof(t_u16); i++)
+			     i < NELEMENTS(prate_scope->ht_mcs_rate_bitmap);
+			     i++)
 				pmpriv->bitmap_rates[2 + i] =
 					wlan_le16_to_cpu(prate_scope->
 							 ht_mcs_rate_bitmap[i]);

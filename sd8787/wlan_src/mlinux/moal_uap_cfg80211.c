@@ -614,11 +614,14 @@ woal_cfg80211_beacon_config(moal_private * priv,
 			sys_config.protocol = PROTOCOL_STATIC_WEP;
 			sys_config.key_mgmt = KEY_MGMT_NONE;
 			sys_config.wpa_cfg.length = 0;
-			sys_config.wep_cfg.key0.key_index = priv->key_index;
-			sys_config.wep_cfg.key0.is_default = 1;
-			sys_config.wep_cfg.key0.length = priv->key_len;
-			memcpy(sys_config.wep_cfg.key0.key, priv->key_material,
-			       priv->key_len);
+			memcpy(&sys_config.wep_cfg.key0, &priv->uap_wep_key[0],
+			       sizeof(wep_key));
+			memcpy(&sys_config.wep_cfg.key1, &priv->uap_wep_key[1],
+			       sizeof(wep_key));
+			memcpy(&sys_config.wep_cfg.key2, &priv->uap_wep_key[2],
+			       sizeof(wep_key));
+			memcpy(&sys_config.wep_cfg.key3, &priv->uap_wep_key[3],
+			       sizeof(wep_key));
 		}
 		break;
 	case WLAN_CIPHER_SUITE_TKIP:
@@ -893,7 +896,7 @@ woal_cfg80211_add_virt_if(struct wiphy *wiphy,
 	if (ret) {
 		handle->priv[new_priv->bss_index] = NULL;
 		handle->priv_num--;
-		if (ndev && ndev->reg_state == NETREG_REGISTERED) {
+		if (ndev->reg_state == NETREG_REGISTERED) {
 			unregister_netdevice(ndev);
 			free_netdev(ndev);
 			ndev = NULL;
@@ -1563,7 +1566,7 @@ woal_cfg80211_del_beacon(struct wiphy *wiphy, struct net_device *dev)
 #endif
 
 	priv->cipher = 0;
-	priv->key_len = 0;
+	memset(priv->uap_wep_key, 0, sizeof(priv->uap_wep_key));
 	priv->channel = 0;
 	PRINTM(MMSG, "wlan: AP stopped\n");
 done:

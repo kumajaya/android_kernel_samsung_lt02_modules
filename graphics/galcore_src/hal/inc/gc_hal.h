@@ -218,9 +218,34 @@ gceCORE;
         prefix##FOOTER_ARG("status=%d", gcvSTATUS_INVALID_OBJECT); \
         return gcvSTATUS_INVALID_OBJECT; \
     }
-
+/*Please guarantee the function "gceSTATUS status" exist*/
+#define _gcmVERIFY_OBJECT_NORETUNE(prefix, obj, t) \
+        if ((obj) == gcvNULL) \
+    { \
+                prefix##TRACE(gcvLEVEL_ERROR, \
+                                              #prefix "VERIFY_OBJECT failed: NULL"); \
+                prefix##TRACE(gcvLEVEL_ERROR, "  expected: %c%c%c%c", \
+                                              gcmCC_PRINT(t)); \
+                prefix##ASSERT((obj) != gcvNULL); \
+                prefix##FOOTER_ARG("status=%d", gcvSTATUS_INVALID_OBJECT); \
+                status = gcvSTATUS_INVALID_OBJECT; \
+                goto OnError; \
+            } \
+    else if (((gcsOBJECT*) (obj))->type != t) \
+    { \
+                prefix##TRACE(gcvLEVEL_ERROR, \
+                                              #prefix "VERIFY_OBJECT failed: %c%c%c%c", \
+                                              gcmCC_PRINT(((gcsOBJECT*) (obj))->type)); \
+                prefix##TRACE(gcvLEVEL_ERROR, "  expected: %c%c%c%c", \
+                                              gcmCC_PRINT(t)); \
+                prefix##ASSERT(((gcsOBJECT*)(obj))->type == t); \
+                prefix##FOOTER_ARG("status=%d", gcvSTATUS_INVALID_OBJECT); \
+                status = gcvSTATUS_INVALID_OBJECT; \
+                goto OnError; \
+    }
 #define gcmVERIFY_OBJECT(obj, t)     _gcmVERIFY_OBJECT(gcm, obj, t)
 #define gcmkVERIFY_OBJECT(obj, t)    _gcmVERIFY_OBJECT(gcmk, obj, t)
+#define gcmkVERIFY_OBJECT_NORETUNE(obj, t)    _gcmVERIFY_OBJECT_NORETUNE(gcmk, obj, t)
 
 /******************************************************************************/
 /*VERIFY_OBJECT if special return expected*/

@@ -956,6 +956,12 @@ sd_interrupt(struct sdio_func *func)
          */
         PRINTM(INTR, "BT: INT %s: sdio_ireg = 0x%x\n", hcidev->name, ireg);
         priv->adapter->irq_recv = ireg;
+	    sdio_writeb(card->func,~(ireg)&(DN_LD_HOST_INT_STATUS|UP_LD_HOST_INT_STATUS),
+                HOST_INTSTATUS_REG,&ret);
+		if (ret){
+			PRINTM(WARN, "BT: sdio_write_ioreg: clear int status register failed\n");
+			goto done;
+		}
     } else {
         PRINTM(ERROR, "BT: ERR: ireg=0\n");
     }
@@ -1272,21 +1278,7 @@ sbi_register_dev(bt_private * priv)
 
     PRINTM(INFO, "BT: SDIO FUNC%d IO port: 0x%x\n", priv->bt_dev.fn,
            priv->bt_dev.ioport);
-#define SDIO_INT_MASK       0x3F
-    /* Set Host interrupt reset to read to clear */
-    reg = sdio_readb(func, HOST_INT_RSR_REG, &ret);
-    if (ret < 0)
-        goto release_irq;
-    sdio_writeb(func, reg | SDIO_INT_MASK, HOST_INT_RSR_REG, &ret);
-    if (ret < 0)
-        goto release_irq;
-    /* Set auto re-enable */
-    reg = sdio_readb(func, CARD_MISC_CFG_REG, &ret);
-    if (ret < 0)
-        goto release_irq;
-    sdio_writeb(func, reg | AUTO_RE_ENABLE_INT, CARD_MISC_CFG_REG, &ret);
-    if (ret < 0)
-        goto release_irq;
+    PRINTM(MSG,": INIT as Write to clear INT\n");
 
     sdio_set_drvdata(func, card);
     sdio_release_host(func);

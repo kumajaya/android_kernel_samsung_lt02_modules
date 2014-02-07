@@ -324,6 +324,31 @@ woal_cfg80211_set_key(moal_private * priv, t_u8 is_enable_wep,
 
 	ENTER();
 
+#ifdef UAP_CFG80211
+#ifdef UAP_SUPPORT
+	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP) {
+		if (is_enable_wep) {
+			PRINTM(MIOCTL, "Enable UAP default key=%d\n",
+			       key_index);
+			priv->uap_wep_key[key_index].is_default = MTRUE;
+			goto done;
+		}
+		if (key && key_len &&
+		    ((cipher == WLAN_CIPHER_SUITE_WEP40) ||
+		     (cipher == WLAN_CIPHER_SUITE_WEP104))) {
+			priv->uap_wep_key[key_index].length = key_len;
+			memcpy(priv->uap_wep_key[key_index].key, key, key_len);
+			priv->cipher = cipher;
+			priv->uap_wep_key[key_index].key_index = key_index;
+			priv->uap_wep_key[key_index].is_default = MFALSE;
+			PRINTM(MIOCTL, "Set UAP WEP key: key_index=%d len=%d\n",
+			       key_index, key_len);
+			goto done;
+		}
+	}
+#endif
+#endif
+
 	/* Allocate an IOCTL request buffer */
 	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_sec_cfg));
 	if (req == NULL) {
@@ -341,24 +366,6 @@ woal_cfg80211_set_key(moal_private * priv, t_u8 is_enable_wep,
 		sec->param.encrypt_key.key_index = key_index;
 		sec->param.encrypt_key.is_current_wep_key = MTRUE;
 	} else if (!disable) {
-#ifdef UAP_CFG80211
-#ifdef UAP_SUPPORT
-		if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP) {
-			if (key && key_len) {
-				priv->key_len = key_len;
-				memcpy(priv->key_material, key, key_len);
-				priv->cipher = cipher;
-				priv->key_index = key_index;
-			}
-			if ((cipher == WLAN_CIPHER_SUITE_WEP40) ||
-			    (cipher == WLAN_CIPHER_SUITE_WEP104)) {
-				PRINTM(MIOCTL, "Set WEP key\n");
-				ret = MLAN_STATUS_SUCCESS;
-				goto done;
-			}
-		}
-#endif
-#endif
 		if (cipher != WLAN_CIPHER_SUITE_WEP40 &&
 		    cipher != WLAN_CIPHER_SUITE_WEP104 &&
 		    cipher != WLAN_CIPHER_SUITE_TKIP &&
@@ -915,6 +922,15 @@ woal_cfg80211_change_virtual_intf(struct wiphy *wiphy,
 		PRINTM(MINFO, "Already set to required type\n");
 		goto done;
 	}
+#ifdef UAP_SUPPORT
+	if ((priv->bss_type == MLAN_BSS_TYPE_UAP) && (priv->bss_index > 0)) {
+		priv->wdev->iftype = type;
+		PRINTM(MMSG, "%s: Skip change virtual intf on uap: type=%d\n",
+		       dev->name, type);
+		goto done;
+	}
+#endif
+
 	PRINTM(MIOCTL, "%s: change virturl intf=%d\n", dev->name, type);
 #if defined(WIFI_DIRECT_SUPPORT)
 #if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
@@ -1334,18 +1350,17 @@ woal_cfg80211_set_default_key(struct wiphy *wiphy,
 	mlan_bss_info bss_info;
 
 	ENTER();
-
-	woal_get_bss_info(priv, MOAL_IOCTL_WAIT, &bss_info);
-	if (!bss_info.wep_status) {
-		LEAVE();
-		return ret;
+	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_STA) {
+		woal_get_bss_info(priv, MOAL_IOCTL_WAIT, &bss_info);
+		if (!bss_info.wep_status) {
+			LEAVE();
+			return ret;
+		}
 	}
-
 	if (MLAN_STATUS_SUCCESS !=
 	    woal_cfg80211_set_wep_keys(priv, NULL, 0, key_index)) {
 		ret = -EFAULT;
 	}
-
 	LEAVE();
 	return ret;
 }
@@ -1821,13 +1836,18 @@ woal_cfg80211_mgmt_tx(struct wiphy *wiphy,
 				ret = -EFAULT;
 				goto done;
 			}
-			if (woal_cfg80211_remain_on_channel_cfg
-			    (remain_priv, MOAL_IOCTL_WAIT, MTRUE,
-			     &channel_status, NULL, 0, 0)) {
-				PRINTM(MERROR,
-				       "mgmt_tx:Fail to cancel remain on channel\n");
-				ret = -EFAULT;
-				goto done;
+			if ((priv->phandle->chan.center_freq !=
+			     chan->center_freq)
+				) {
+				if (woal_cfg80211_remain_on_channel_cfg
+				    (remain_priv, MOAL_IOCTL_WAIT, MTRUE,
+				     &channel_status, NULL, 0, 0)) {
+					PRINTM(MERROR,
+					       "mgmt_tx:Fail to cancel remain on channel\n");
+					ret = -EFAULT;
+					goto done;
+				}
+
 			}
 
 			if (priv->phandle->cookie) {

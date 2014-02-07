@@ -33,15 +33,15 @@ Change log:
 #include "mlan_11n.h"
 
 /********************************************************
-    Local Variables
+			Local Variables
 ********************************************************/
 
 /********************************************************
-    Global Variables
+			Global Variables
 ********************************************************/
 
 /********************************************************
-    Local Functions
+			Local Functions
 ********************************************************/
 
 /**
@@ -990,7 +990,7 @@ wlan_11n_get_txbastream_status(mlan_private * priv, baStatus_e ba_status)
 }
 
 /********************************************************
-    Global Functions
+			Global Functions
 ********************************************************/
 
 #ifdef STA_SUPPORT
@@ -1004,8 +1004,7 @@ wlan_11n_get_txbastream_status(mlan_private * priv, baStatus_e ba_status)
  *  @return             N/A
  */
 static void
-wlan_fill_cap_info(mlan_private * priv,
-		   MrvlIETypes_HTCap_t * pht_cap, t_u8 bands)
+wlan_fill_cap_info(mlan_private * priv, HTCap_t * ht_cap, t_u8 bands)
 {
 	mlan_adapter *pmadapter = priv->adapter;
 	t_u32 usr_dot_11n_dev_cap;
@@ -1018,55 +1017,55 @@ wlan_fill_cap_info(mlan_private * priv,
 		usr_dot_11n_dev_cap = pmadapter->usr_dot_11n_dev_cap_bg;
 
 	if (ISSUPP_CHANWIDTH40(usr_dot_11n_dev_cap))
-		SETHT_SUPPCHANWIDTH(pht_cap->ht_cap.ht_cap_info);
+		SETHT_SUPPCHANWIDTH(ht_cap->ht_cap_info);
 	else
-		RESETHT_SUPPCHANWIDTH(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_SUPPCHANWIDTH(ht_cap->ht_cap_info);
 
 	if (ISSUPP_GREENFIELD(usr_dot_11n_dev_cap))
-		SETHT_GREENFIELD(pht_cap->ht_cap.ht_cap_info);
+		SETHT_GREENFIELD(ht_cap->ht_cap_info);
 	else
-		RESETHT_GREENFIELD(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_GREENFIELD(ht_cap->ht_cap_info);
 
 	if (ISSUPP_SHORTGI20(usr_dot_11n_dev_cap))
-		SETHT_SHORTGI20(pht_cap->ht_cap.ht_cap_info);
+		SETHT_SHORTGI20(ht_cap->ht_cap_info);
 	else
-		RESETHT_SHORTGI20(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_SHORTGI20(ht_cap->ht_cap_info);
 
 	if (ISSUPP_SHORTGI40(usr_dot_11n_dev_cap))
-		SETHT_SHORTGI40(pht_cap->ht_cap.ht_cap_info);
+		SETHT_SHORTGI40(ht_cap->ht_cap_info);
 	else
-		RESETHT_SHORTGI40(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_SHORTGI40(ht_cap->ht_cap_info);
 
 	if (ISSUPP_RXSTBC(usr_dot_11n_dev_cap))
-		SETHT_RXSTBC(pht_cap->ht_cap.ht_cap_info, 1);
+		SETHT_RXSTBC(ht_cap->ht_cap_info, 1);
 	else
-		RESETHT_RXSTBC(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_RXSTBC(ht_cap->ht_cap_info);
 
 	if (ISENABLED_40MHZ_INTOLARENT(usr_dot_11n_dev_cap))
-		SETHT_40MHZ_INTOLARANT(pht_cap->ht_cap.ht_cap_info);
+		SETHT_40MHZ_INTOLARANT(ht_cap->ht_cap_info);
 	else
-		RESETHT_40MHZ_INTOLARANT(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_40MHZ_INTOLARANT(ht_cap->ht_cap_info);
 
 	/* No user config for LDPC coding capability yet */
 	if (ISSUPP_RXLDPC(pmadapter->hw_dot_11n_dev_cap))
-		SETHT_LDPCCODINGCAP(pht_cap->ht_cap.ht_cap_info);
+		SETHT_LDPCCODINGCAP(ht_cap->ht_cap_info);
 	else
-		RESETHT_LDPCCODINGCAP(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_LDPCCODINGCAP(ht_cap->ht_cap_info);
 
 	/* No user config for TX STBC yet */
 	if (ISSUPP_TXSTBC(pmadapter->hw_dot_11n_dev_cap))
-		SETHT_TXSTBC(pht_cap->ht_cap.ht_cap_info);
+		SETHT_TXSTBC(ht_cap->ht_cap_info);
 	else
-		RESETHT_TXSTBC(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_TXSTBC(ht_cap->ht_cap_info);
 
 	/* No user config for Delayed BACK yet */
 	if (GET_DELAYEDBACK(pmadapter->hw_dot_11n_dev_cap))
-		SETHT_DELAYEDBACK(pht_cap->ht_cap.ht_cap_info);
+		SETHT_DELAYEDBACK(ht_cap->ht_cap_info);
 	else
-		RESETHT_DELAYEDBACK(pht_cap->ht_cap.ht_cap_info);
+		RESETHT_DELAYEDBACK(ht_cap->ht_cap_info);
 
 	/* Need change to support 8k AMSDU receive */
-	RESETHT_MAXAMSDU(pht_cap->ht_cap.ht_cap_info);
+	RESETHT_MAXAMSDU(ht_cap->ht_cap_info);
 
 	LEAVE();
 }
@@ -1096,7 +1095,7 @@ wlan_fill_ht_cap_tlv(mlan_private * priv,
 		usr_dot_11n_dev_cap = pmadapter->usr_dot_11n_dev_cap_bg;
 
 	/* Fill HT cap info */
-	wlan_fill_cap_info(priv, pht_cap, bands);
+	wlan_fill_cap_info(priv, &pht_cap->ht_cap, bands);
 	pht_cap->ht_cap.ht_cap_info =
 		wlan_cpu_to_le16(pht_cap->ht_cap.ht_cap_info);
 
@@ -1121,6 +1120,61 @@ wlan_fill_ht_cap_tlv(mlan_private * priv,
 
 	/* Set Tx BF cap */
 	pht_cap->ht_cap.tx_bf_cap = wlan_cpu_to_le32(priv->tx_bf_cap);
+
+	LEAVE();
+	return;
+}
+
+/**
+ *  @brief This function fills the HT cap ie
+ *
+ *  @param priv         A pointer to mlan_private structure
+ *  @param pht_cap      A pointer to IEEEtypes_HTCap_t structure
+ *  @param bands        Band configuration
+ *
+ *  @return             N/A
+ */
+void
+wlan_fill_ht_cap_ie(mlan_private * priv, IEEEtypes_HTCap_t * pht_cap,
+		    t_u8 bands)
+{
+	mlan_adapter *pmadapter = priv->adapter;
+	int rx_mcs_supp;
+	t_u32 usr_dot_11n_dev_cap;
+
+	ENTER();
+
+	pht_cap->ieee_hdr.element_id = HT_CAPABILITY;
+	pht_cap->ieee_hdr.len = sizeof(HTCap_t);
+	if (bands & BAND_A)
+		usr_dot_11n_dev_cap = pmadapter->usr_dot_11n_dev_cap_a;
+	else
+		usr_dot_11n_dev_cap = pmadapter->usr_dot_11n_dev_cap_bg;
+
+	/* Fill HT cap info */
+	wlan_fill_cap_info(priv, &pht_cap->ht_cap, bands);
+
+	/* Set ampdu param */
+	SETAMPDU_SIZE(pht_cap->ht_cap.ampdu_param, AMPDU_FACTOR_64K);
+	SETAMPDU_SPACING(pht_cap->ht_cap.ampdu_param, 0);
+
+	rx_mcs_supp = GET_RXMCSSUPP(pmadapter->usr_dev_mcs_support);
+	memset(pmadapter, (t_u8 *) pht_cap->ht_cap.supported_mcs_set, 0xff,
+	       rx_mcs_supp);
+	/* Clear all the other values to get the minimum mcs set btw STA and AP
+	 */
+	memset(pmadapter,
+	       (t_u8 *) & pht_cap->ht_cap.supported_mcs_set[rx_mcs_supp], 0,
+	       NUM_MCS_FIELD - rx_mcs_supp);
+	/* Set MCS32 with 40MHz support */
+	if (ISSUPP_CHANWIDTH40(usr_dot_11n_dev_cap))
+		SETHT_MCS32(pht_cap->ht_cap.supported_mcs_set);
+
+	/* Clear RD responder bit */
+	RESETHT_EXTCAP_RDG(pht_cap->ht_cap.ht_ext_cap);
+
+	/* Set Tx BF cap */
+	pht_cap->ht_cap.tx_bf_cap = priv->tx_bf_cap;
 
 	LEAVE();
 	return;
@@ -1597,6 +1651,53 @@ wlan_ret_reject_addba_req(IN pmlan_private pmpriv,
 	}
 	LEAVE();
 	return MLAN_STATUS_SUCCESS;
+}
+
+/**
+ * @brief Get second channel offset
+ *
+ * @param chan 			  channel num
+ * @return                second channel offset
+ */
+t_u8
+wlan_get_second_channel_offset(int chan)
+{
+	t_u8 chan2Offset = SEC_CHAN_NONE;
+
+	switch (chan) {
+	case 36:
+	case 44:
+	case 52:
+	case 60:
+	case 100:
+	case 108:
+	case 116:
+	case 124:
+	case 132:
+	case 149:
+	case 157:
+		chan2Offset = SEC_CHAN_ABOVE;
+		break;
+	case 40:
+	case 48:
+	case 56:
+	case 64:
+	case 104:
+	case 112:
+	case 120:
+	case 128:
+	case 136:
+	case 153:
+	case 161:
+		chan2Offset = SEC_CHAN_BELOW;
+		break;
+	case 140:
+	case 165:
+		/* Special Case: 20Mhz-only Channel */
+		chan2Offset = SEC_CHAN_NONE;
+		break;
+	}
+	return chan2Offset;
 }
 
 #ifdef STA_SUPPORT

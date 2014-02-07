@@ -52,7 +52,6 @@ Change log:
 #include        <linux/ptrace.h>
 #include        <linux/string.h>
 #include        <linux/irqreturn.h>
-#include        <linux/list.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 18)
 #include       <linux/config.h>
@@ -777,14 +776,10 @@ struct tcp_sess {
 	t_u32 dst_ip_addr;
 	t_u16 src_tcp_port;
 	t_u16 dst_tcp_port;
-    /** tcp window info */
-	t_u8 rx_win_opt;
-	t_u32 rx_win_scale;
-    /** warming up counter */
-	t_u32 start_cnt;
     /** tx ack packet info */
 	t_u32 ack_seq;
-	t_u32 ack_cnt;
+	/** tcp ack buffer */
+	void *ack_skb;
 };
 
 /** Private structure for MOAL */
@@ -805,6 +800,10 @@ struct _moal_private {
 	t_u8 current_addr[ETH_ALEN];
 	/** Media connection status */
 	BOOLEAN media_connected;
+	/** Statistics of tcp ack tx dropped */
+	t_u32 tcp_ack_drop_cnt;
+	/** Statistics of tcp ack tx in total from kernel */
+	t_u32 tcp_ack_cnt;
 #ifdef UAP_SUPPORT
 	/** uAP started or not */
 	BOOLEAN bss_started;
@@ -856,14 +855,12 @@ struct _moal_private {
 	struct net_device *pa_netdev;
 	/** channel parameter for UAP/GO */
 	t_u16 channel;
+#ifdef UAP_SUPPORT
+    /** wep key */
+	wep_key uap_wep_key[4];
 	/** cipher */
 	t_u32 cipher;
-	/** key index */
-	t_u8 key_index;
-	/** key len */
-	t_u16 key_len;
-	/** key data */
-	t_u8 key_material[MLAN_MAX_KEY_LENGTH];
+#endif
 	/** beacon ie index */
 	t_u16 beacon_index;
 	/** proberesp ie index */
@@ -979,6 +976,7 @@ struct _moal_private {
 	t_u8 enable_tcp_ack_enh;
     /** TCP session spin lock */
 	spinlock_t tcp_sess_lock;
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 	atomic_t wmm_tx_pending[4];
 #endif
@@ -1512,18 +1510,10 @@ typedef struct _HostCmd_DS_802_11_CFG_DATA {
 #define WEXT_BGSCAN_INTERVAL_SECTION 'T'
 /** BGSCAN REPEAT SECTION */
 #define WEXT_BGSCAN_REPEAT_SECTION  'E'
-
-#ifdef CONFIG_MACH_LT02LGT
-/** Min BGSCAN interval 60 second for LGU+ model only*/
-#define MIN_BGSCAN_INTERVAL	 60000
-/** default repeat count for LGU+ model only*/
-#define DEF_REPEAT_COUNT	 10000
-#else
 /** Min BGSCAN interval 30 second */
 #define MIN_BGSCAN_INTERVAL	 30000
 /** default repeat count */
 #define DEF_REPEAT_COUNT	 6
-#endif
 
 /** default rssi low threshold */
 #define DEFAULT_RSSI_LOW_THRESHOLD 70
@@ -1652,6 +1642,8 @@ int woal_enable_hs(moal_private * priv);
 /** hs active timeout 2 second */
 #define HS_ACTIVE_TIMEOUT  (2 * HZ)
 #endif
+
+void woal_dump_drv_info(moal_handle * phandle);
 
 void woal_dump_firmware_info(moal_handle * phandle);
 
@@ -1897,4 +1889,5 @@ int wlan_get_scan_table_ret_entry(BSSDescriptor_t * pbss_desc, t_u8 ** ppbuffer,
 BOOLEAN woal_ssid_valid(mlan_802_11_ssid * pssid);
 int woal_is_connected(moal_private * priv, mlan_ssid_bssid * ssid_bssid);
 int woal_priv_hostcmd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen);
+void woal_tcp_ack_tx_indication(moal_private * priv, mlan_buffer * pmbuf);
 #endif /* _MOAL_MAIN_H */

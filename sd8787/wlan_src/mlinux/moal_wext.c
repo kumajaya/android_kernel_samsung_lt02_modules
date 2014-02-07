@@ -3018,10 +3018,9 @@ woal_send_mic_error_event(moal_private * priv, t_u32 event)
 #ifdef STA_SUPPORT
 /** wlan_handler_def */
 struct iw_handler_def woal_handler_def = {
-num_standard:sizeof(woal_handler) / sizeof(iw_handler),
-num_private:sizeof(woal_private_handler) / sizeof(iw_handler),
-num_private_args:sizeof(woal_private_args) /
-		sizeof(struct iw_priv_args),
+num_standard:ARRAY_SIZE(woal_handler),
+num_private:ARRAY_SIZE(woal_private_handler),
+num_private_args:ARRAY_SIZE(woal_private_args),
 standard:(iw_handler *) woal_handler,
 private:(iw_handler *) woal_private_handler,
 private_args:(struct iw_priv_args *)woal_private_args,

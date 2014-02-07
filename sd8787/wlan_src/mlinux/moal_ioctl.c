@@ -123,10 +123,9 @@ static t_u8
 region_string_2_region_code(char *region_string)
 {
 	t_u8 i;
-	t_u8 size = sizeof(region_code_mapping) / sizeof(region_code_mapping_t);
 
 	ENTER();
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < ARRAY_SIZE(region_code_mapping); i++) {
 		if (!memcmp(region_string,
 			    region_code_mapping[i].region,
 			    strlen(region_string))) {
@@ -150,11 +149,9 @@ char *
 region_code_2_string(t_u8 region_code)
 {
 	t_u8 i;
-	t_u8 size =
-		sizeof(hw_region_code_mapping) / sizeof(region_code_mapping_t);
 
 	ENTER();
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < ARRAY_SIZE(hw_region_code_mapping); i++) {
 		if (hw_region_code_mapping[i].code == region_code) {
 			LEAVE();
 			return hw_region_code_mapping[i].region;
@@ -1488,7 +1485,8 @@ woal_get_debug_info(moal_private * priv, t_u8 wait_option,
 	ENTER();
 
 	/* Allocate an IOCTL request buffer */
-	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_get_info));
+	req = woal_alloc_mlan_ioctl_req(sizeof(t_u32) +
+					sizeof(mlan_debug_info));
 	if (req == NULL) {
 		ret = -ENOMEM;
 		goto done;
@@ -1542,7 +1540,8 @@ woal_set_debug_info(moal_private * priv, t_u8 wait_option,
 	}
 
 	/* Allocate an IOCTL request buffer */
-	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_get_info));
+	req = woal_alloc_mlan_ioctl_req(sizeof(t_u32) +
+					sizeof(mlan_debug_info));
 	if (req == NULL) {
 		ret = -ENOMEM;
 		goto done;
@@ -4036,7 +4035,7 @@ woal_cancel_scan(moal_private * priv, t_u8 wait_option)
 	MOAL_REL_SEMAPHORE(&handle->async_sem);
 #ifdef STA_CFG80211
 	for (i = 0; i < handle->priv_num; i++) {
-		spin_lock(&priv->scan_req_lock);
+		spin_lock(&handle->priv[i]->scan_req_lock);
 		if (IS_STA_CFG80211(cfg80211_wext) &&
 		    handle->priv[i]->scan_request) {
 	    /** some supplicant can not handle SCAN abort event */
@@ -4044,7 +4043,7 @@ woal_cancel_scan(moal_private * priv, t_u8 wait_option)
 					   MFALSE);
 			handle->priv[i]->scan_request = NULL;
 		}
-		spin_unlock(&priv->scan_req_lock);
+		spin_unlock(&handle->priv[i]->scan_req_lock);
 	}
 #endif
 done:

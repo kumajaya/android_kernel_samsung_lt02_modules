@@ -45,10 +45,6 @@ Change log:
 #endif
 #include "moal_eth_ioctl.h"
 
-#include <linux/if_ether.h>
-#include <linux/in.h>
-#include <linux/tcp.h>
-#include <net/tcp.h>
 #include <net/dsfield.h>
 
 /********************************************************
@@ -153,6 +149,8 @@ int cfg80211_wext = STA_CFG80211_MASK | UAP_CFG80211_MASK;
 int wq_sched_prio;
 /** Work queue scheduling policy */
 int wq_sched_policy = SCHED_NORMAL;
+/** rx_work flag */
+int rx_work;
 
 int hw_test;
 
@@ -193,6 +191,7 @@ static mlan_callbacks woal_callbacks = {
 	.moal_print = moal_print,
 	.moal_print_netintf = moal_print_netintf,
 	.moal_assert = moal_assert,
+	.moal_tcp_ack_tx_ind = moal_tcp_ack_tx_ind,
 };
 
 /** Default Driver mode */
@@ -886,6 +885,18 @@ woal_init_sw(moal_handle * handle)
 #endif
 #endif
 
+	if (rx_work == MLAN_INIT_PARA_ENABLED)
+		device.rx_work = MTRUE;
+	else if (rx_work == MLAN_INIT_PARA_DISABLED)
+		device.rx_work = MFALSE;
+	else {
+		if (num_possible_cpus() > 1)
+			device.rx_work = MTRUE;
+		else
+			device.rx_work = MFALSE;
+	}
+	PRINTM(MMSG, "rx_work=%d cpu_num=%d\n", device.rx_work,
+	       num_possible_cpus());
 	for (i = 0; i < handle->drv_mode.intf_num; i++) {
 		device.bss_attr[i].bss_type =
 			handle->drv_mode.bss_attr[i].bss_type;
@@ -2621,9 +2632,9 @@ woal_mlan_debug_info(moal_private * priv)
 {
 	int i;
 #ifdef SDIO_MULTI_PORT_TX_AGGR
-    int j;
+	int j;
 #endif
-    char str[512] = {0};
+	char str[512] = { 0 };
 	char *s;
 
 	ENTER();
@@ -2708,15 +2719,20 @@ woal_mlan_debug_info(moal_private * priv)
 	PRINTM(MERROR, "mp_wr_bitmap=0x%x curr_wr_port=0x%x\n",
 	       (unsigned int)info.mp_wr_bitmap, info.curr_wr_port);
 #ifdef SDIO_MULTI_PORT_TX_AGGR
-    PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index = %d\n",info.last_recv_wr_bitmap,info.last_mp_index);
-    for (i = 0; i < SDIO_MP_DBG_NUM; i ++) {
-        for (s = str, j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++) {
-            s += sprintf(s, "0x%02x ", info.last_mp_wr_info[i * SDIO_MP_AGGR_DEF_PKT_LIMIT + j]);
-        }
-        PRINTM(MERROR, "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n%s\n",
-                info.last_mp_wr_bitmap[i], info.last_mp_wr_ports[i],
-                info.last_mp_wr_len[i], info.last_curr_wr_port[i],str);
-    }
+	PRINTM(MERROR, "last_recv_wr_bitmap=0x%x last_mp_index = %d\n",
+	       info.last_recv_wr_bitmap, info.last_mp_index);
+	for (i = 0; i < SDIO_MP_DBG_NUM; i++) {
+		for (s = str, j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++) {
+			s += sprintf(s, "0x%02x ",
+				     info.last_mp_wr_info[i *
+							  SDIO_MP_AGGR_DEF_PKT_LIMIT
+							  + j]);
+		}
+		PRINTM(MERROR,
+		       "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n%s\n",
+		       info.last_mp_wr_bitmap[i], info.last_mp_wr_ports[i],
+		       info.last_mp_wr_len[i], info.last_curr_wr_port[i], str);
+	}
 #endif
 	PRINTM(MERROR, "------------mlan_debug_info End-------------\n");
 	LEAVE();
@@ -2822,6 +2838,8 @@ woal_flush_tcp_sess_queue(moal_private * priv)
 		kfree(tcp_sess);
 	}
 	INIT_LIST_HEAD(&priv->tcp_sess_queue);
+	priv->tcp_ack_drop_cnt = 0;
+	priv->tcp_ack_cnt = 0;
 	spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
 }
 
@@ -2837,7 +2855,7 @@ woal_flush_tcp_sess_queue(moal_private * priv)
  *  @return          A pointer to the tcp session data structure, if found.
  *                   Otherwise, null
  */
-struct tcp_sess *
+static inline struct tcp_sess *
 woal_get_tcp_sess(moal_private * priv,
 		  t_u32 src_ip, t_u16 src_port, t_u32 dst_ip, t_u16 dst_port)
 {
@@ -2858,37 +2876,57 @@ woal_get_tcp_sess(moal_private * priv,
 }
 
 /**
- *  @brief This function process tcp ack packets
+ *  @brief This function free the tcp ack session node
  *
  *  @param priv      A pointer to moal_private structure
- *  @param pmbuf     A pointer to the mlan buffer associated with the skb
+ *  @param pmbuf     A pointer to mlan_buffer associated with a skb
  *
- *  @return          1, if a tcp ack packet has been dropped. Otherwise, 0.
+ *  @return	         N/A
+ */
+void
+woal_tcp_ack_tx_indication(moal_private * priv, mlan_buffer * pmbuf)
+{
+	struct tcp_sess *tcp_sess = NULL, *tmp = NULL;
+	unsigned long flags;
+	ENTER();
+
+	spin_lock_irqsave(&priv->tcp_sess_lock, flags);
+	list_for_each_entry_safe(tcp_sess, tmp, &priv->tcp_sess_queue, link) {
+		if (tcp_sess->ack_skb == pmbuf->pdesc) {
+			list_del(&tcp_sess->link);
+			kfree(tcp_sess);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
+
+	LEAVE();
+	return;
+}
+
+/**
+ *  @brief This function get the tcp ack session node
+ *
+ *  @param priv      A pointer to moal_private structure
+ *  @param pmbuf     A pointer to mlan_buffer associated with a skb
+ *
+ *  @return          1, if it's dropped; 0, if not dropped
  */
 int
 woal_process_tcp_ack(moal_private * priv, mlan_buffer * pmbuf)
 {
 	int ret = 0;
+	unsigned long flags;
+	struct tcp_sess *tcp_session;
 	struct ethhdr *ethh = NULL;
 	struct iphdr *iph = NULL;
 	struct tcphdr *tcph = NULL;
-	struct tcp_sess *tcp_sess = NULL;
-	struct sk_buff *skb = NULL;
-	t_u32 ack_seq = 0;
-	t_u32 len = 0;
-	t_u8 opt = 0;
-	t_u8 opt_len = 0;
-	t_u8 *pos = NULL;
-	t_u32 win_size = 0;
-	unsigned long flags;
-
-#define TCP_ACK_DELAY   3
-#define TCP_ACK_INIT_WARMING_UP  1000	/* initial */
-#define TCP_ACK_RECV_WARMING_UP  1000	/* recovery */
+	t_u32 ack_seq;
+	struct sk_buff *skb;
 
 	ENTER();
 
-    /** check the tcp packet */
+	/** check the tcp packet */
 	ethh = (struct ethhdr *)(pmbuf->pbuf + pmbuf->data_offset);
 	if (ntohs(ethh->h_proto) != ETH_P_IP) {
 		LEAVE();
@@ -2901,123 +2939,58 @@ woal_process_tcp_ack(moal_private * priv, mlan_buffer * pmbuf)
 	}
 	tcph = (struct tcphdr *)((t_u8 *) iph + iph->ihl * 4);
 
-	spin_lock_irqsave(&priv->tcp_sess_lock, flags);
-	if (tcph->syn & tcph->ack) {
-		tcp_sess = woal_get_tcp_sess(priv, iph->saddr, tcph->source,
-					     iph->daddr, tcph->dest);
-		if (!tcp_sess) {
-			/* respond to a TCP request. create a tcp session */
-			tcp_sess = kmalloc(sizeof(struct tcp_sess), GFP_ATOMIC);
-			if (!tcp_sess) {
+	if (*((t_u8 *) tcph + 13) == 0x10) {
+		/* Only replace ACK */
+		priv->tcp_ack_cnt++;
+		if (ntohs(iph->tot_len) > (iph->ihl + tcph->doff) * 4) {
+			/* Don't drop ACK with payload */
+			/* TODO: should we delete previous TCP session */
+			LEAVE();
+			return ret;
+		}
+		spin_lock_irqsave(&priv->tcp_sess_lock, flags);
+		tcp_session = woal_get_tcp_sess(priv, iph->saddr,
+						tcph->source, iph->daddr,
+						tcph->dest);
+		if (!tcp_session) {
+			tcp_session =
+				kmalloc(sizeof(struct tcp_sess), GFP_ATOMIC);
+			if (!tcp_session) {
 				PRINTM(MERROR, "Fail to allocate tcp_sess.\n");
 				goto done;
 			}
-			memset(tcp_sess, 0, sizeof(struct tcp_sess));
-			tcp_sess->src_ip_addr = iph->saddr;	/* my ip addr */
-			tcp_sess->dst_ip_addr = iph->daddr;
-			tcp_sess->src_tcp_port = tcph->source;
-			tcp_sess->dst_tcp_port = tcph->dest;
-			INIT_LIST_HEAD(&tcp_sess->link);
-			list_add_tail(&tcp_sess->link, &priv->tcp_sess_queue);
-			PRINTM(MINFO,
-			       "create a tcp session. (src: ipaddr 0x%08x, port: %d. dst: ipaddr 0x%08x, port: %d\n",
-			       iph->saddr, tcph->source, iph->daddr,
-			       tcph->dest);
+			tcp_session->ack_skb = pmbuf->pdesc;
+			tcp_session->src_ip_addr = iph->saddr;
+			tcp_session->dst_ip_addr = iph->daddr;
+			tcp_session->src_tcp_port = tcph->source;
+			tcp_session->dst_tcp_port = tcph->dest;
+			tcp_session->ack_seq = ntohl(tcph->ack_seq);
+			list_add_tail(&tcp_session->link,
+				      &priv->tcp_sess_queue);
+			pmbuf->flags |= MLAN_BUF_FLAG_TCP_ACK;
+			spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
+			LEAVE();
+			return ret;
 		}
-		tcp_sess->start_cnt = TCP_ACK_INIT_WARMING_UP;
-		/* parse tcp options for the window scale */
-		len = (tcph->doff * 4) - sizeof(struct tcphdr);
-		pos = (t_u8 *) (tcph + 1);
-		while (len > 0) {
-			opt = *pos++;
-			switch (opt) {
-			case TCPOPT_EOL:
-				len = 0;
-				continue;
-			case TCPOPT_NOP:
-				len--;
-				continue;
-			case TCPOPT_WINDOW:
-				opt_len = *pos++;
-				if (opt_len == TCPOLEN_WINDOW) {
-					tcp_sess->rx_win_scale = *pos;
-					tcp_sess->rx_win_opt = 1;
-					if (tcp_sess->rx_win_scale > 14)
-						tcp_sess->rx_win_scale = 14;
-					PRINTM(MINFO, "TCP Window Scale: %d \n",
-					       tcp_sess->rx_win_scale);
-				}
-				break;
-			default:
-				opt_len = *pos++;
-			}
-			len -= opt_len;
-			pos += opt_len - 2;
-		}
-	} else if (tcph->ack && !(tcph->syn) &&
-		   (ntohs(iph->tot_len) == (iph->ihl * 4 + tcph->doff * 4))) {
-	/** it is an ack packet, not a piggyback ack */
-		tcp_sess = woal_get_tcp_sess(priv, iph->saddr, tcph->source,
-					     iph->daddr, tcph->dest);
-		if (tcp_sess == NULL) {
-			goto done;
-		}
-	/** do not drop the ack packets initially */
-		if (tcp_sess->start_cnt) {
-			tcp_sess->start_cnt--;
-			goto done;
-		}
-
-		/* check the window size. */
-		win_size = ntohs(tcph->window);
-		if (tcp_sess->rx_win_opt) {
-			win_size <<= tcp_sess->rx_win_scale;
-			/* Note: it may depend on the rtd */
-			if ((win_size > 1500 * (TCP_ACK_DELAY + 5)) &&
-			    (tcp_sess->ack_cnt < TCP_ACK_DELAY)) {
-				/* if windiow is big enough, drop the ack
-				   packet */
-				if (tcp_sess->ack_seq != ntohl(tcph->ack_seq)) {
-					ack_seq = tcp_sess->ack_seq;
-					tcp_sess->ack_seq =
-						ntohl(tcph->ack_seq);
-					tcp_sess->ack_cnt++;
-					skb = (struct sk_buff *)pmbuf->pdesc;
-					if (skb)
-						dev_kfree_skb_any(skb);
-					ret = 1;
-				} else {
-					/* the ack packet is retransmitted.
-					   thus, stop dropping the ack packets */
-					tcp_sess->start_cnt =
-						TCP_ACK_RECV_WARMING_UP;
-					PRINTM(MINFO,
-					       "Recover the TCP session.\n ");
-				}
-			} else {
-				/* send the current ack pacekt */
-				ack_seq = tcp_sess->ack_seq;
-				tcp_sess->ack_seq = ntohl(tcph->ack_seq);
-				tcp_sess->ack_cnt = 0;
-			}
-		}
-	} else if (tcph->fin) {
-		tcp_sess = woal_get_tcp_sess(priv, iph->saddr, tcph->source,
-					     iph->daddr, tcph->dest);
-		if (tcp_sess != NULL) {
-			/* remove the tcp session from the queue */
-			PRINTM(MINFO,
-			       "Rx: release a tcp session in ul. (src: ipaddr 0x%08x, port: %d. dst: ipaddr 0x%08x, port: %d\n",
-			       iph->saddr, tcph->source, iph->daddr,
-			       tcph->dest);
-			list_del(&tcp_sess->link);
-			kfree(tcp_sess);
+		ack_seq = ntohl(tcph->ack_seq);
+		skb = (struct sk_buff *)tcp_session->ack_skb;
+		if (likely(ack_seq > tcp_session->ack_seq) &&
+		    (skb->len == pmbuf->data_len)) {
+			memcpy(skb->data, pmbuf->pbuf + pmbuf->data_offset,
+			       pmbuf->data_len);
+			tcp_session->ack_seq = ack_seq;
+			ret = 1;
+			spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
+			skb = (struct sk_buff *)pmbuf->pdesc;
+			dev_kfree_skb_any(skb);
+			priv->tcp_ack_drop_cnt++;
 		} else {
-			PRINTM(MINFO, "released TCP session is not found.\n ");
+			spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
+			LEAVE();
+			return ret;
 		}
 	}
 done:
-	spin_unlock_irqrestore(&priv->tcp_sess_lock, flags);
 	LEAVE();
 	return ret;
 }
@@ -3377,7 +3350,7 @@ woal_init_priv(moal_private * priv, t_u8 wait_option)
 #ifdef STA_SUPPORT
 #endif
 
-	priv->enable_tcp_ack_enh = MFALSE;
+	priv->enable_tcp_ack_enh = MTRUE;
 
 	woal_request_get_fw_info(priv, wait_option, NULL);
 
@@ -3616,12 +3589,14 @@ pmlan_ioctl_req
 woal_alloc_mlan_ioctl_req(int size)
 {
 	mlan_ioctl_req *req = NULL;
+	gfp_t flag;
 
 	ENTER();
 
+	flag = in_atomic()? GFP_ATOMIC : GFP_KERNEL;
 	req = (mlan_ioctl_req *)
 		kmalloc((sizeof(mlan_ioctl_req) + size + sizeof(int) +
-			 sizeof(wait_queue)), GFP_ATOMIC);
+			 sizeof(wait_queue)), flag);
 	if (!req) {
 		PRINTM(MERROR, "%s: Fail to alloc ioctl buffer\n",
 		       __FUNCTION__);
@@ -4139,19 +4114,535 @@ woal_send_disconnect_to_system(moal_private * priv)
 }
 #endif /* STA_SUPPORT */
 
-#define DEBUG_HOST_READY                  0xee
-#define DEBUG_FW_DONE                     0xff
-#define DEBUG_ITCM_DONE                     0xaa
-#define DEBUG_DTCM_DONE                     0xbb
-#define DEBUG_SQRAM_DONE                     0xcc
+#define DRV_INFO_SIZE 0x40000
+#define ROW_SIZE_16      16
+#define ROW_SIZE_32      32
+/**
+ *  @brief This function save moal_priv's debug log
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer buffer saving log
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_priv_drv_info(moal_handle * handle, t_u8 * buf)
+{
+	char *ptr = (char *)buf;
+	int index;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
+	int i = 0;
+#endif
+	moal_private *priv;
+
+	ENTER();
+	if (!handle || !buf) {
+		PRINTM(MMSG, "%s: can't retreive info\n", __func__);
+		LEAVE();
+		return 0;
+	}
+	for (index = 0; index < MIN(handle->priv_num, MLAN_MAX_BSS_NUM);
+	     index++) {
+		priv = handle->priv[index];
+		if (priv) {
+			ptr += sprintf(ptr, "[Interface : %s]\n",
+				       priv->proc_entry_name);
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
+			ptr += sprintf(ptr, "wmm_tx_pending[0] = %d\n",
+				       atomic_read(&priv->wmm_tx_pending[0]));
+			ptr += sprintf(ptr, "wmm_tx_pending[1] = %d\n",
+				       atomic_read(&priv->wmm_tx_pending[1]));
+			ptr += sprintf(ptr, "wmm_tx_pending[2] = %d\n",
+				       atomic_read(&priv->wmm_tx_pending[2]));
+			ptr += sprintf(ptr, "wmm_tx_pending[3] = %d\n",
+				       atomic_read(&priv->wmm_tx_pending[3]));
+#endif
+			ptr += sprintf(ptr, "Media state = \"%s\"\n",
+				       ((priv->media_connected ==
+					 MFALSE) ? "Disconnected" :
+					"Connected"));
+			ptr += sprintf(ptr, "carrier %s\n",
+				       ((netif_carrier_ok(priv->netdev)) ? "on"
+					: "off"));
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
+			for (i = 0; i < (priv->netdev->num_tx_queues); i++) {
+				ptr += sprintf(ptr, "tx queue %d: %s\n", i,
+					       ((netif_tx_queue_stopped
+						 (netdev_get_tx_queue
+						  (priv->netdev,
+						   i))) ? "stopped" :
+						"started"));
+			}
+#else
+			ptr += sprintf(ptr, "tx queue %s\n",
+				       ((netif_queue_stopped(priv->netdev)) ?
+					"stopped" : "started"));
+#endif
+			ptr += sprintf(ptr, "%s: num_tx_timeout = %d\n",
+				       priv->netdev->name,
+				       priv->num_tx_timeout);
+		}
+	}
+
+	LEAVE();
+	return ptr - (char *)buf;
+}
+
+/**
+ *  @brief This function save sdio reg info
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer buffer saving log
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_sdio_reg_info(moal_handle * phandle, t_u8 * drv_buf)
+{
+	char *drv_ptr = (char *)drv_buf;
+	int ret = 0;
+	t_u8 loop, index = 0, func, data;
+	unsigned int reg, reg_start, reg_end;
+	unsigned int reg_table[] = { 0x28, 0x30, 0x34, 0x38, 0x3c };
+	char buf[128], *ptr;
+
+	ENTER();
+
+	if (!phandle || !drv_buf) {
+		PRINTM(MMSG, "%s: can't retreive info\n", __func__);
+		LEAVE();
+		return 0;
+	}
+
+	drv_ptr += sprintf(drv_ptr, "--------sdio_reg_debug_info---------\n");
+	sdio_claim_host(((struct sdio_mmc_card *)phandle->card)->func);
+	for (loop = 0; loop < 5; loop++) {
+		memset(buf, 0, sizeof(buf));
+		ptr = buf;
+		if (loop < 2) {
+			/* Read the registers of SDIO function0 and function1 */
+			func = loop;
+			reg_start = 0;
+			reg_end = 9;
+		} else if (loop == 2) {
+			/* Read specific registers of SDIO function1 */
+			index = 0;
+			func = 1;
+			reg_start = reg_table[index++];
+			reg_end =
+				reg_table[sizeof(reg_table) / sizeof(int) - 1];
+		} else {
+			/* Read the scratch registers of SDIO function1 */
+			if (loop == 4)
+				mdelay(100);
+			func = 1;
+#define SDIO_SCRATCH_REG 0x60
+			reg_start = SDIO_SCRATCH_REG;
+			reg_end = SDIO_SCRATCH_REG + 10;
+		}
+		if (loop != 2)
+			ptr += sprintf(ptr, "SDIO Func%d (%#x-%#x): ", func,
+				       reg_start, reg_end);
+		else
+			ptr += sprintf(ptr, "SDIO Func%d: ", func);
+		for (reg = reg_start; reg <= reg_end;) {
+			if (func == 0)
+				data = sdio_f0_readb(((struct sdio_mmc_card *)
+						      phandle->card)->func, reg,
+						     &ret);
+			else
+				data = sdio_readb(((struct sdio_mmc_card *)
+						   phandle->card)->func, reg,
+						  &ret);
+			if (loop == 2)
+				ptr += sprintf(ptr, "(%#x) ", reg);
+			if (!ret)
+				ptr += sprintf(ptr, "%02x ", data);
+			else {
+				ptr += sprintf(ptr, "ERR");
+				break;
+			}
+			if (loop == 2 && reg < reg_end)
+				reg = reg_table[index++];
+			else
+				reg++;
+		}
+		drv_ptr += sprintf(drv_ptr, "%s\n", buf);
+	}
+	sdio_release_host(((struct sdio_mmc_card *)phandle->card)->func);
+
+	drv_ptr +=
+		sprintf(drv_ptr, "--------sdio_reg_debug_info End---------\n");
+
+	LEAVE();
+	return drv_ptr - (char *)drv_buf;
+}
+
+/**
+ *  @brief This function save moal_handle's info
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer buffer saving log
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_moal_drv_info(moal_handle * phandle, t_u8 * buf)
+{
+	char *ptr;
+	char str_buf[MLAN_MAX_VER_STR_LEN];
+
+	ENTER();
+	if (!phandle || !buf) {
+		PRINTM(MMSG, "%s: can't retreive info\n", __func__);
+		LEAVE();
+		return 0;
+	}
+	ptr = (char *)buf;
+	ptr += sprintf(ptr, "------------moal_debug_info-------------\n");
+	woal_get_version(phandle, str_buf, sizeof(str_buf) - 1);
+	ptr += sprintf(ptr, "Driver version = %s\n", str_buf);
+	ptr += sprintf(ptr, "main_state = %d\n", phandle->main_state);
+	ptr += sprintf(ptr, "ioctl_pending = %d\n",
+		       atomic_read(&phandle->ioctl_pending));
+	ptr += sprintf(ptr, "tx_pending = %d\n",
+		       atomic_read(&phandle->tx_pending));
+	ptr += sprintf(ptr, "rx_pending = %d\n",
+		       atomic_read(&phandle->rx_pending));
+	ptr += sprintf(ptr, "lock_count = %d\n",
+		       atomic_read(&phandle->lock_count));
+	ptr += sprintf(ptr, "malloc_count = %d\n",
+		       atomic_read(&phandle->malloc_count));
+	ptr += sprintf(ptr, "mbufalloc_count = %d\n",
+		       atomic_read(&phandle->mbufalloc_count));
+#if defined(SDIO_SUSPEND_RESUME)
+	ptr += sprintf(ptr, "hs_skip_count = %u\n", phandle->hs_skip_count);
+	ptr += sprintf(ptr, "hs_force_count = %u\n", phandle->hs_force_count);
+#endif
+
+	ptr += woal_dump_priv_drv_info(phandle, ptr);
+	ptr += sprintf(ptr, "------------moal_debug_info End-------------\n");
+
+	ptr += woal_dump_sdio_reg_info(phandle, ptr);
+
+	LEAVE();
+	return ptr - (char *)buf;
+}
+
+/**
+ *  @brief This function save mlan's info
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer buffer saving log
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_mlan_drv_info(moal_private * priv, t_u8 * buf)
+{
+	char *ptr = (char *)buf;
+	int i;
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+	int j;
+#endif
+	char str[11 * DBG_CMD_NUM + 1] = { 0 };
+	char *s;
+
+	ENTER();
+	if (!priv || woal_get_debug_info(priv, MOAL_CMD_WAIT, &info)) {
+		PRINTM(MERROR,
+		       "Could not retrieve debug information from MLAN\n");
+		LEAVE();
+		return 0;
+	}
+	ptr += sprintf(ptr, "------------mlan_debug_info-------------\n");
+	ptr += sprintf(ptr, "mlan_processing =%d\n", info.mlan_processing);
+	ptr += sprintf(ptr, "mlan_rx_processing =%d\n",
+		       info.mlan_rx_processing);
+	ptr += sprintf(ptr, "num_cmd_timeout = %d\n", info.num_cmd_timeout);
+	ptr += sprintf(ptr, "Timeout cmd id = 0x%x, act = 0x%x \n",
+		       info.timeout_cmd_id, info.timeout_cmd_act);
+	ptr += sprintf(ptr, "last_cmd_index = %d\n", info.last_cmd_index);
+	for (s = str, i = 0; i < DBG_CMD_NUM; i++) {
+		s += sprintf(s, "0x%x ", info.last_cmd_act[i]);
+	}
+	ptr += sprintf(ptr, "last_cmd_act = %s\n", str);
+	ptr += sprintf(ptr, "last_cmd_resp_index = %d\n",
+		       info.last_cmd_resp_index);
+	for (s = str, i = 0; i < DBG_CMD_NUM; i++) {
+		s += sprintf(s, "0x%x ", info.last_cmd_resp_id[i]);
+	}
+	ptr += sprintf(ptr, "last_cmd_resp_id = %s\n", str);
+	ptr += sprintf(ptr, "last_event_index = %d\n", info.last_event_index);
+	for (s = str, i = 0; i < DBG_CMD_NUM; i++) {
+		s += sprintf(s, "0x%x ", info.last_event[i]);
+	}
+	ptr += sprintf(ptr, "last_event = %s\n", str);
+	ptr += sprintf(ptr, "num_data_h2c_failure = %d\n",
+		       info.num_tx_host_to_card_failure);
+	ptr += sprintf(ptr, "num_cmd_h2c_failure = %d\n",
+		       info.num_cmd_host_to_card_failure);
+	ptr += sprintf(ptr, "num_data_c2h_failure = %d\n",
+		       info.num_rx_card_to_host_failure);
+	ptr += sprintf(ptr, "num_cmdevt_c2h_failure = %d\n",
+		       info.num_cmdevt_card_to_host_failure);
+	ptr += sprintf(ptr, "num_int_read_failure = %d\n",
+		       info.num_int_read_failure);
+	ptr += sprintf(ptr, "last_int_status = %d\n", info.last_int_status);
+	ptr += sprintf(ptr, "num_event_deauth = %d\n", info.num_event_deauth);
+	ptr += sprintf(ptr, "num_event_disassoc = %d\n",
+		       info.num_event_disassoc);
+	ptr += sprintf(ptr, "num_event_link_lost = %d\n",
+		       info.num_event_link_lost);
+	ptr += sprintf(ptr, "num_cmd_deauth = %d\n", info.num_cmd_deauth);
+	ptr += sprintf(ptr, "num_cmd_assoc_success = %d\n",
+		       info.num_cmd_assoc_success);
+	ptr += sprintf(ptr, "num_cmd_assoc_failure = %d\n",
+		       info.num_cmd_assoc_failure);
+	ptr += sprintf(ptr, "cmd_resp_received = %d\n", info.cmd_resp_received);
+	ptr += sprintf(ptr, "event_received = %d\n", info.event_received);
+	ptr += sprintf(ptr, "max_tx_buf_size = %d\n", info.max_tx_buf_size);
+	ptr += sprintf(ptr, "tx_buf_size = %d\n", info.tx_buf_size);
+	ptr += sprintf(ptr, "curr_tx_buf_size = %d\n", info.curr_tx_buf_size);
+
+	ptr += sprintf(ptr, "data_sent=%d cmd_sent=%d\n", info.data_sent,
+		       info.cmd_sent);
+	ptr += sprintf(ptr, "ps_mode=%d ps_state=%d\n", info.ps_mode,
+		       info.ps_state);
+	ptr += sprintf(ptr, "wakeup_dev_req=%d wakeup_tries=%d\n",
+		       info.pm_wakeup_card_req, info.pm_wakeup_fw_try);
+	ptr += sprintf(ptr, "hs_configured=%d hs_activated=%d\n",
+		       info.is_hs_configured, info.hs_activated);
+	ptr += sprintf(ptr, "pps_uapsd_mode=%d sleep_pd=%d\n",
+		       info.pps_uapsd_mode, info.sleep_pd);
+	ptr += sprintf(ptr, "tx_lock_flag = %d\n", info.tx_lock_flag);
+	ptr += sprintf(ptr, "port_open = %d\n", info.port_open);
+	ptr += sprintf(ptr, "scan_processing = %d\n", info.scan_processing);
+
+	ptr += sprintf(ptr, "mp_rd_bitmap=0x%x curr_rd_port=0x%x\n",
+		       (unsigned int)info.mp_rd_bitmap, info.curr_rd_port);
+	ptr += sprintf(ptr, "mp_wr_bitmap=0x%x curr_wr_port=0x%x\n",
+		       (unsigned int)info.mp_wr_bitmap, info.curr_wr_port);
+#ifdef SDIO_MULTI_PORT_TX_AGGR
+	ptr += sprintf(ptr, "last_recv_wr_bitmap=0x%x last_mp_index = %d\n",
+		       info.last_recv_wr_bitmap, info.last_mp_index);
+	for (i = 0; i < SDIO_MP_DBG_NUM; i++) {
+		for (s = str, j = 0; j < SDIO_MP_AGGR_DEF_PKT_LIMIT; j++) {
+			s += sprintf(s, "0x%02x ",
+				     info.last_mp_wr_info[i *
+							  SDIO_MP_AGGR_DEF_PKT_LIMIT
+							  + j]);
+		}
+		ptr += sprintf(ptr,
+			       "mp_wr_bitmap: 0x%x mp_wr_ports=0x%x len=%d curr_wr_port=0x%x\n%s\n",
+			       info.last_mp_wr_bitmap[i],
+			       info.last_mp_wr_ports[i], info.last_mp_wr_len[i],
+			       info.last_curr_wr_port[i], str);
+	}
+#endif
+	ptr += sprintf(ptr, "------------mlan_debug_info End-------------\n");
+
+	LEAVE();
+	return ptr - (char *)buf;
+}
+
+/**
+ *  @brief This function dump hex to file
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer to buffer to dump
+ *  @param len       lengh of buf
+ *  @param ascii     Whether add ascii at the end
+ *  @param save_buf  Buffer which is saved to
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_save_hex_dump(int rowsize, const void *buf, size_t len,
+		   bool ascii, t_u8 * save_buf)
+{
+	const u8 *ptr = buf;
+	int i, linelen, remaining = len;
+	unsigned char linebuf[ROW_SIZE_32 * 3 + 2 + ROW_SIZE_32 + 1];
+	char *pos = (char *)save_buf;
+
+	if (rowsize != ROW_SIZE_16 && rowsize != ROW_SIZE_32)
+		rowsize = ROW_SIZE_16;
+
+	for (i = 0; i < len; i += rowsize) {
+		linelen = min(remaining, rowsize);
+		remaining -= rowsize;
+
+		hex_dump_to_buffer(ptr + i, linelen, rowsize, 1, linebuf,
+				   sizeof(linebuf), ascii);
+
+		pos += sprintf(pos, "%p: %s\n", ptr + i, linebuf);
+	}
+
+	return pos - (char *)save_buf;
+}
+
+/**
+ *  @brief This function dump moal hex to file
+ *
+ *  @param phandle   A pointer to moal_handle
+ *  @param buf       A pointer to buffer
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_moal_hex(moal_handle * phandle, t_u8 * buf)
+{
+	char *ptr = (char *)buf;
+	int i;
+	ENTER();
+
+	if (!phandle || !buf) {
+		PRINTM(MMSG, "%s: can't retreive info\n", __func__);
+		LEAVE();
+		return 0;
+	}
+
+	ptr += sprintf(ptr, "<--moal_handle-->\n");
+	ptr += sprintf(ptr, "moal_handle=%p, size=%d(0x%x)\n", phandle,
+		       sizeof(*phandle), sizeof(*phandle));
+	ptr += woal_save_hex_dump(ROW_SIZE_16, phandle, sizeof(*phandle), MTRUE,
+				  ptr);
+	ptr += sprintf(ptr, "<--moal_handle End-->\n");
+
+	for (i = 0; i < phandle->priv_num; i++) {
+		ptr += sprintf(ptr, "<--moal_private(%d)-->\n", i);
+		ptr += sprintf(ptr, "moal_private=%p, size=%d(0x%x)\n",
+			       phandle->priv[i], sizeof(*(phandle->priv[i])),
+			       sizeof(*(phandle->priv[i])));
+		ptr += woal_save_hex_dump(ROW_SIZE_16, phandle->priv[i],
+					  sizeof(*(phandle->priv[i])), MTRUE,
+					  ptr);
+		ptr += sprintf(ptr, "<--moal_private(%d) End-->\n", i);
+	}
+	LEAVE();
+	return ptr - (char *)buf;
+}
+
+/**
+ *  @brief This function dump mlan hex to file
+ *
+ *  @param priv   A pointer to moal_private structure
+ *  @param buf       A pointer to buffer
+ *
+ *  @return          The length of this log
+ */
+static int
+woal_dump_mlan_hex(moal_private * priv, t_u8 * buf)
+{
+	char *ptr = (char *)buf;
+	int i;
+
+	ENTER();
+
+	if (!buf || !priv || woal_get_debug_info(priv, MOAL_CMD_WAIT, &info)) {
+		PRINTM(MMSG, "%s: can't retreive info\n", __func__);
+		LEAVE();
+		return 0;
+	}
+
+	ptr += sprintf(ptr, "<--mlan_adapter-->\n");
+	ptr += sprintf(ptr, "mlan_adapter=%p, size=%d(0x%x)\n",
+		       info.mlan_adapter, info.mlan_adapter_size,
+		       info.mlan_adapter_size);
+	ptr += woal_save_hex_dump(ROW_SIZE_16, info.mlan_adapter,
+				  info.mlan_adapter_size, MTRUE, ptr);
+	ptr += sprintf(ptr, "<--mlan_adapter End-->\n");
+	for (i = 0; i < info.mlan_priv_num; i++) {
+		ptr += sprintf(ptr, "<--mlan_private(%d)-->\n", i);
+		ptr += sprintf(ptr, "mlan_private=%p, size=%d(0x%x)\n",
+			       info.mlan_priv[i], info.mlan_priv_size[i],
+			       info.mlan_priv_size[i]);
+		ptr += woal_save_hex_dump(ROW_SIZE_16, info.mlan_priv[i],
+					  info.mlan_priv_size[i], MTRUE, ptr);
+		ptr += sprintf(ptr, "<--mlan_private(%d) End-->\n", i);
+	}
+
+	LEAVE();
+	return ptr - (char *)buf;
+}
+
+/**
+ *  @brief This function dump drv info to file
+ *
+ *  @param phandle   A pointer to moal_handle
+ *
+ *  @return         N/A
+ */
+void
+woal_dump_drv_info(moal_handle * phandle)
+{
+	int ret = 0;
+	struct file *pfile = NULL;
+	mm_segment_t fs;
+	t_u8 *drv_buf;
+	t_u8 *pos;
+	loff_t start;
+
+	ENTER();
+
+	PRINTM(MMSG, "=== START DRIVER INFO DUMP===");
+	ret = moal_vmalloc(phandle, DRV_INFO_SIZE + 1, &drv_buf);
+	if ((ret != MLAN_STATUS_SUCCESS) || !drv_buf) {
+		PRINTM(MERROR, "Error: vmalloc drv buffer failed!\n");
+		goto done;
+	}
+	pos = drv_buf;
+
+	pos += woal_dump_moal_drv_info(phandle, pos);
+	pos += woal_dump_mlan_drv_info(woal_get_priv
+				       (phandle, MLAN_BSS_ROLE_ANY), pos);
+
+	pos += woal_dump_moal_hex(phandle, pos);
+	pos += woal_dump_mlan_hex(woal_get_priv(phandle, MLAN_BSS_ROLE_ANY),
+				  pos);
+
+	PRINTM(MMSG, "Drv info total bytes = %d (0x%x)\n", pos - drv_buf,
+	       pos - drv_buf);
+
+	pfile = filp_open("/data/file_drv_info", O_CREAT | O_RDWR, 0644);
+	if (IS_ERR(pfile)) {
+		pfile = filp_open("/var/file_drv_info", O_CREAT | O_RDWR, 0644);
+	}
+	if (IS_ERR(pfile)) {
+		PRINTM(MMSG, "Create file_drv_info file failed\n");
+		goto done;
+	}
+
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+	start = 0;
+	vfs_write(pfile, drv_buf, pos - drv_buf, &start);
+	filp_close(pfile, NULL);
+	set_fs(fs);
+
+	PRINTM(MMSG, "=== DRIVER INFO DUMP END===");
+done:
+	if (drv_buf)
+		moal_vfree(phandle, drv_buf);
+	LEAVE();
+}
+
+#define DEBUG_HOST_READY		0xee
+#define DEBUG_FW_DONE			0xff
+#define DEBUG_ITCM_DONE			0xaa
+#define DEBUG_DTCM_DONE			0xbb
+#define DEBUG_SQRAM_DONE		0xcc
+#define MAX_POLL_TRIES			100
+
 #define DEBUG_DUMP_CTRL_REG               0x63
 #define DEBUG_DUMP_FIRST_REG              0x62
 #define DEBUG_DUMP_START_REG              0x64
 #define DEBUG_DUMP_END_REG                0x6a
 #define ITCM_SIZE                         0x60000
 #define SQRAM_SIZE                        0x33000
-#define MAX_POLL_TRIES                    100
 #define DTCM_SIZE                         0xA700
+
 /**
  *  @brief This function dump firmware memory to file
  *
@@ -4185,6 +4676,8 @@ woal_dump_firmware_info(moal_handle * phandle)
 		PRINTM(MERROR, "Could not dump firmwware info\n");
 		return;
 	}
+
+	woal_dump_drv_info(phandle);
 
 	sdio_claim_host(((struct sdio_mmc_card *)phandle->card)->func);
 	/* start dump fw memory */
@@ -4395,15 +4888,17 @@ woal_sdio_reg_dbg(moal_handle * phandle)
 		if (loop < 2) {
 			/* Read the registers of SDIO function0 and function1 */
 			func = loop;
-			reg_start = 0;
+			if (loop == 1)
+				reg_start = 4;
+			else
+				reg_start = 0;
 			reg_end = 9;
 		} else if (loop == 2) {
 			/* Read specific registers of SDIO function1 */
 			index = 0;
 			func = 1;
 			reg_start = reg_table[index++];
-			reg_end =
-				reg_table[sizeof(reg_table) / sizeof(int) - 1];
+			reg_end = reg_table[ARRAY_SIZE(reg_table) - 1];
 		} else {
 			/* Read the scratch registers of SDIO function1 */
 			if (loop == 4)
@@ -4459,9 +4954,7 @@ woal_moal_debug_info(moal_private * priv, moal_handle * handle, u8 flag)
 {
 	moal_handle *phandle = NULL;
 	char buf[MLAN_MAX_VER_STR_LEN];
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 	int i = 0;
-#endif
 
 	ENTER();
 
@@ -4525,6 +5018,13 @@ woal_moal_debug_info(moal_private * priv, moal_handle * handle, u8 flag)
 		       ((netif_queue_stopped(priv->netdev)) ? "stopped" :
 			"started"));
 #endif
+	}
+
+	for (i = 0; i < phandle->priv_num; i++) {
+		priv = phandle->priv[i];
+		if (priv)
+			PRINTM(MERROR, "%s: num_tx_timeout = %d\n",
+			       priv->netdev->name, priv->num_tx_timeout);
 	}
 
 	/* Display SDIO registers */
@@ -4940,8 +5440,17 @@ woal_remove_card(void *card)
 		       atomic_read(&handle->ioctl_pending));
 	}
 	unregister_inetaddr_notifier(&woal_notifier);
+
 #if defined(WIFI_DIRECT_SUPPORT)
 #if defined(STA_CFG80211) && defined(UAP_CFG80211)
+	if (handle->is_go_timer_set) {
+		woal_cancel_timer(&handle->go_timer);
+		handle->is_go_timer_set = MFALSE;
+	}
+	if (handle->is_remain_timer_set) {
+		woal_cancel_timer(&handle->remain_timer);
+		woal_remain_timer_func(handle);
+	}
 #if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
 	/* Remove virtual interface */
 	woal_remove_virtual_interface(handle);
@@ -4968,18 +5477,6 @@ woal_remove_card(void *card)
 		woal_sched_timeout(2);
 	}
 #endif /* REASSOCIATION */
-#if defined(WIFI_DIRECT_SUPPORT)
-#if defined(STA_CFG80211) && defined(UAP_CFG80211)
-	if (handle->is_go_timer_set) {
-		woal_cancel_timer(&handle->go_timer);
-		handle->is_go_timer_set = MFALSE;
-	}
-	if (handle->is_remain_timer_set) {
-		woal_cancel_timer(&handle->remain_timer);
-		woal_remain_timer_func(handle);
-	}
-#endif
-#endif
 
 #ifdef CONFIG_PROC_FS
 	woal_proc_exit(handle);
@@ -5366,6 +5863,9 @@ module_param(wq_sched_policy, int, 0);
 MODULE_PARM_DESC(wq_sched_prio, "Priority of work queue");
 MODULE_PARM_DESC(wq_sched_policy,
 		 "0: SCHED_NORMAL; 1: SCHED_FIFO; 2: SCHED_RR; 3: SCHED_BATCH; 5: SCHED_IDLE");
+module_param(rx_work, int, 0);
+MODULE_PARM_DESC(rx_work,
+		 "0: default; 1: Enable rx_work_queue; 2: Disable rx_work_queue");
 MODULE_DESCRIPTION("M-WLAN Driver");
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_VERSION(MLAN_RELEASE_VERSION);

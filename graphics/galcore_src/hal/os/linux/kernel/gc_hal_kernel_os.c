@@ -6699,6 +6699,7 @@ OnError:
     gctUINTPTR_T start, end, memory;
     gctUINT32 offset;
     gctINT result = 0;
+    gctBOOL isLocked = gcvFALSE;
 
     gcsPageInfo_PTR info = gcvNULL;
     struct page **pages = gcvNULL;
@@ -6733,8 +6734,6 @@ OnError:
             return gcvSTATUS_INVALID_ARGUMENT;
         }
 
-        MEMORY_MAP_LOCK(Os);
-
         /* Allocate the Info struct. */
         info = (gcsPageInfo_PTR)kmalloc(sizeof(gcsPageInfo), GFP_KERNEL | __GFP_NOWARN);
 
@@ -6752,6 +6751,9 @@ OnError:
             status = gcvSTATUS_OUT_OF_MEMORY;
             break;
         }
+
+        MEMORY_MAP_LOCK(Os);
+        isLocked = gcvTRUE;
 
         if (Physical != ~0U)
         {
@@ -7050,7 +7052,10 @@ OnError:
         }
     }
 
-    MEMORY_MAP_UNLOCK(Os);
+    if(isLocked)
+    {
+        MEMORY_MAP_UNLOCK(Os);
+    }
 
     /* Return the status. */
     if (gcmIS_SUCCESS(status))

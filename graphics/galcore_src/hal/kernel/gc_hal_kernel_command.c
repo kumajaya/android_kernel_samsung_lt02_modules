@@ -1090,14 +1090,16 @@ gckCOMMAND_Commit(
         Command->os, Command->mutexContext, gcvINFINITE
         ));
     contextAcquired = gcvTRUE;
-
-    /* Extract the gckHARDWARE and gckEVENT objects. */
+	
+	    /* Extract the gckHARDWARE and gckEVENT objects. */
     hardware = Command->kernel->hardware;
 
     /* Check wehther we need to copy the structures or not. */
     gcmkONERROR(gckOS_QueryNeedCopy(Command->os, ProcessID, &needCopy));
 
 #if gcdNULL_DRIVER
+
+
     /* Context switch required? */
     if ((Context != gcvNULL) && (Command->currContext != Context))
     {
@@ -1119,7 +1121,7 @@ gckCOMMAND_Commit(
             gcmSIZEOF(struct _gcoCMDBUF)
             ));
 
-        gcmkVERIFY_OBJECT(commandBufferObject, gcvOBJ_COMMANDBUFFER);
+                gcmkVERIFY_OBJECT_NORETUNE(commandBufferObject, gcvOBJ_COMMANDBUFFER);
     }
     else
     {
@@ -1132,11 +1134,11 @@ gckCOMMAND_Commit(
 
         commandBufferObject = pointer;
 
-        gcmkVERIFY_OBJECT(commandBufferObject, gcvOBJ_COMMANDBUFFER);
+                gcmkVERIFY_OBJECT_NORETUNE(commandBufferObject, gcvOBJ_COMMANDBUFFER);
         commandBufferMapped = gcvTRUE;
     }
 
-    /* Query the size of NOP command. */
+       /* Query the size of NOP command. */
     gcmkONERROR(gckHARDWARE_Nop(
         hardware, gcvNULL, &nopBytes
         ));

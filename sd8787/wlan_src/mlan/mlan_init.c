@@ -291,12 +291,13 @@ wlan_init_priv(pmlan_private priv)
 	priv->sec_info.wep_status = Wlan802_11WEPDisabled;
 	priv->sec_info.authentication_mode = MLAN_AUTH_MODE_AUTO;
 	priv->sec_info.encryption_mode = MLAN_ENCRYPTION_MODE_NONE;
-	for (i = 0; i < sizeof(priv->wep_key) / sizeof(priv->wep_key[0]); i++)
+	for (i = 0; i < MRVL_NUM_WEP_KEY; i++)
 		memset(pmadapter, &priv->wep_key[i], 0, sizeof(mrvl_wep_key_t));
 	priv->wep_key_curr_index = 0;
 	priv->ewpa_query = MFALSE;
 	priv->adhoc_aes_enabled = MFALSE;
 	priv->curr_pkt_filter =
+		HostCmd_ACT_MAC_RTS_CTS_ENABLE |
 		HostCmd_ACT_MAC_RX_ON | HostCmd_ACT_MAC_TX_ON |
 		HostCmd_ACT_MAC_ETHERNETII_ENABLE;
 

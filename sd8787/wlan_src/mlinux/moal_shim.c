@@ -895,7 +895,8 @@ moal_recv_event(IN t_void * pmoal_handle, IN pmlan_event pmevent)
 
 	ENTER();
 
-	PRINTM(MEVENT, "event id:0x%x\n", pmevent->event_id);
+	if (pmevent->event_id != MLAN_EVENT_ID_DRV_DEFER_RX_WORK)
+		PRINTM(MEVENT, "event id:0x%x\n", pmevent->event_id);
 	priv = woal_bss_index_to_priv(pmoal_handle, pmevent->bss_index);
 	if (priv == NULL) {
 		PRINTM(MERROR, "%s: priv is null\n", __FUNCTION__);
@@ -977,6 +978,7 @@ moal_recv_event(IN t_void * pmoal_handle, IN pmlan_event pmevent)
 		}
 
 		if (priv->report_scan_result) {
+			priv->report_scan_result = MFALSE;
 #ifdef STA_WEXT
 			if (IS_STA_WEXT(cfg80211_wext)) {
 				memset(&wrqu, 0, sizeof(union iwreq_data));
@@ -1012,7 +1014,7 @@ moal_recv_event(IN t_void * pmoal_handle, IN pmlan_event pmevent)
 
 			woal_broadcast_event(priv, (t_u8 *) & pmevent->event_id,
 					     sizeof(mlan_event_id));
-			priv->report_scan_result = MFALSE;
+
 		}
 		break;
 
@@ -1921,4 +1923,20 @@ moal_assert(IN t_void * pmoal_handle, IN t_u32 cond)
 	if (!cond) {
 		panic("Assert failed: Panic!");
 	}
+}
+
+/**
+ *  @brief This function indicate tcp ack tx
+ *
+ *  @param pmoal_handle     A pointer to moal_private structure
+ *  @param pmbuf		    Pointer to the mlan buffer structure
+ *
+ *  @return		    		N/A
+ */
+t_void
+moal_tcp_ack_tx_ind(IN t_void * pmoal_handle, IN pmlan_buffer pmbuf)
+{
+	moal_handle *phandle = (moal_handle *) pmoal_handle;
+	pmbuf->flags &= ~MLAN_BUF_FLAG_TCP_ACK;
+	woal_tcp_ack_tx_indication(phandle->priv[pmbuf->bss_index], pmbuf);
 }

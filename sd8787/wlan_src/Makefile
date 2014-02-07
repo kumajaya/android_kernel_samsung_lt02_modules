@@ -213,6 +213,10 @@ ifneq ($(findstring lt02kidswifiww, $(TARGET_PRODUCT)), lt02kidswifiww)
 	EXTRA_CFLAGS += -DFIRST_SCAN_2G_ONLY
 $(warning Marvell WIFI 2Ghz PRESCAN : enabled)
 endif
+ifneq ($(findstring lt02kidswifizc, $(TARGET_PRODUCT)), lt02kidswifizc)
+	EXTRA_CFLAGS += -DFIRST_SCAN_2G_ONLY
+$(warning Marvell WIFI 2Ghz PRESCAN : enabled)
+endif
 
 # Enable firmware memory dump for test purpose
 # SHOULD BE REMOVED IN PRODUCTION BUILD
