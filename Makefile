@@ -111,6 +111,7 @@ clean_sd8787_wifi:
 	$(hide)cd $(SD8787_DRVSRC)/wlan_src &&\
 	make clean
 	rm -f $(KERNEL_OUTDIR)/modules/sd8787.ko
+	rm -f $(KERNEL_OUTDIR)/modules/mlan.ko
 	$(log) "sd8787 wifi driver cleaned."
 
 $(eval $(call add-module,sd8787_wifi) )

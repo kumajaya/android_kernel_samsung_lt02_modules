@@ -94,6 +94,7 @@ clean:
 	$(hide)rm -f $(KERNEL_OUTDIR)/modules/cploaddev.ko
 	$(hide)rm -f $(KERNEL_OUTDIR)/modules/seh.ko
 	$(hide)rm -f $(KERNEL_OUTDIR)/modules/hwmap.ko
+	$(hide)rm -f $(KERNEL_OUTDIR)/modules/usimeventk.ko
 	make -C shmem/msocket clean
 	make -C diag clean
 	make -C cimodemtty clean
